@@ -1,0 +1,85 @@
+{
+    "name": "RPN25 MPC Holonomic Navigation Development Container",
+    "privileged": true,
+    "remoteUser": "container_user",
+    "containerUser": "container_user",
+    "build": {
+        "dockerfile": "Dockerfile"
+    },
+    "workspaceMount": "source=${localWorkspaceFolder},target=/ros2_ws/src,type=bind",
+    "workspaceFolder": "/ros2_ws/src",
+    "customizations": {
+        "vscode": {
+            "settings": {
+                "actionButtons": {
+                    "defaultColor": "#ff0034", // Can also use string color names.
+                    "loadNpmCommands": false, // Disables automatic generation of actions for npm commands.
+                    "reloadButton": "♻️", // Custom reload button text or icon (default ↻). null value enables automatic reload on configuration change
+                    "commands": [
+                        {
+                            "name": "Build WS",
+                            "cwd": "/ros2_ws",
+                            "color": "green",
+                            "singleInstance": true,
+                            "command": "colcon build --symlink-install" // This is executed in the terminal.
+                        },
+                        {
+                            "name": "$(testing-run-all-icon) Test WS",
+                            "cwd": "/ros2_ws",
+                            "color": "orange",
+                            "singleInstance": true,
+                            "command": "colcon test --event-handlers console_direct+"
+                        },
+                        {
+                            "name": "$(extensions-install-count) Import Libs",
+                            "cwd": "/ros2_ws",
+                            "color": "aqua",
+                            "singleInstance": true,
+                            "command": "rm -rf /ros2_ws/src/dep_repos && mkdir -p /ros2_ws/src/dep_repos && vcs import /ros2_ws/src/dep_repos < /ros2_ws/src/dep.repos"
+                        }
+                    ]
+                }
+            },
+            "extensions":[
+				"althack.ament-task-provider",
+				"betwo.b2-catkin-tools",
+				"DotJoshJohnson.xml",
+				"ms-azuretools.vscode-docker",
+				"ms-iot.vscode-ros",
+				"ms-python.python",
+				"ms-vscode.cpptools",
+				"redhat.vscode-yaml",
+                "seunlanlege.action-buttons",
+				"smilerobotics.urdf",
+				"streetsidesoftware.code-spell-checker",
+				"twxs.cmake",
+				"yzhang.markdown-all-in-one",
+				"zachflower.uncrustify"
+            ]
+        }
+    },
+    "containerEnv": {
+		"DISPLAY":"${localEnv:DISPLAY}", // Needed for GUI try ":0" for windows
+		"WAYLAND_DISPLAY": "${localEnv:WAYLAND_DISPLAY}",
+		"XDG_RUNTIME_DIR": "${localEnv:XDG_RUNTIME_DIR}",
+		"PULSE_SERVER": "${localEnv:PULSE_SERVER}",
+        "QT_X11_NO_MITSHM": "1",
+		"LIBGL_ALWAYS_SOFTWARE": "1" // Needed for software rendering of opengl
+    },
+    "runArgs": [
+        // RealTime
+		"--cap-add=SYS_NICE",
+        "--ulimit=rtprio=99",
+        "--ulimit=rttime=-1",
+        "--ulimit=memlock=8428281856",
+        // This will allow you to use a ptrace-based debugger like C++, Go, and Rust.
+		"--cap-add=all",
+        "--security-opt=seccomp:unconfined",
+        "--security-opt=apparmor:unconfined",
+        "--volume=/dev:/dev",
+        "--net=host",
+        "--ipc=host",
+        "--name=rpn25_mpc_holonomic_navigation_development"
+    ],
+    "postStartCommand": "sudo chown -R container_user /ros2_ws /run"
+}
