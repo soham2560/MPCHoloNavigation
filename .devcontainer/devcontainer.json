@@ -21,7 +21,7 @@
                             "cwd": "/ros2_ws",
                             "color": "green",
                             "singleInstance": true,
-                            "command": "colcon build --symlink-install" // This is executed in the terminal.
+                            "command": "colcon build --symlink-install --packages-up-to robot_bringup" // This is executed in the terminal.
                         },
                         {
                             "name": "$(testing-run-all-icon) Test WS",
