@@ -287,7 +287,7 @@
         <parameters>$(find robot_bringup)/config/mecanum_drive_controller.yaml</parameters>
         <ros>
           <namespace>/$(arg NAMESPACE)</namespace>
-          <remapping>/mecanum_drive_controller/reference:=/cmd_vel</remapping>
+          <remapping>/mecanum_drive_controller/reference_unstamped:=/cmd_vel</remapping>
           <remapping>/mecanum_drive_controller/odom:=/odom</remapping>
           <remapping>/mecanum_drive_controller/tf_odometry:=/tf</remapping>
         </ros>
