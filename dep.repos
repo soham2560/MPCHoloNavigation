@@ -10,8 +10,4 @@ repositories:
   ros2_controllers:
     type: git
     url: git@github.com:ros-controls/ros2_controllers.git
-    version: 
-  ros2_control:
-    type: git
-    url: git@github.com:ros-controls/ros2_control.git
     version: humble

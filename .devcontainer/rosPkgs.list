@@ -16,6 +16,7 @@ ros-humble-ros2controlcli
 ros-humble-plotjuggler-ros
 ros-humble-xacro
 ros-humble-rosbag2-storage-mcap
+ros-humble-twist-mux
 iproute2
 can-utils
 net-tools
