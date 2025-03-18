@@ -6,7 +6,7 @@ repositories:
   rocon_hardware_interfaces:
     type: git
     url: git@github.com:RRC-Control-Lab/rocon_hardware_interfaces.git
-    version: feat/rmdhwif
+    version: main
   ros2_controllers:
     type: git
     url: git@github.com:ros-controls/ros2_controllers.git

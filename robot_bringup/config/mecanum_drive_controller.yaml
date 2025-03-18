@@ -19,9 +19,9 @@
       rear_left_wheel_command_joint_name: "rear_left_wheel_joint"
       kinematics:
           base_frame_offset: { x: 0.0, y: 0.0, theta: 0.0 }
-          wheels_radius: 0.3
-          sum_of_robot_center_projection_on_X_Y_axis: 1.1
+          wheels_radius: 0.076
+          sum_of_robot_center_projection_on_X_Y_axis: 0.49
       base_frame_id: "base_link"
       odom_frame_id: "odom"
       enable_odom_tf: true
-      use_stamped_vel: true
+      use_stamped_vel: false

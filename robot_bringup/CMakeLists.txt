@@ -10,11 +10,14 @@ find_package(ament_cmake REQUIRED)
 find_package(controller_manager REQUIRED)
 find_package(joint_state_broadcaster REQUIRED)
 find_package(mecanum_drive_controller REQUIRED)
+find_package(ak_hardware_interface REQUIRED)
 find_package(rcl_interfaces REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_components REQUIRED)
 find_package(robot_state_publisher REQUIRED)
 find_package(urdf REQUIRED)
+find_package(joy REQUIRED)
+find_package(teleop_twist_joy REQUIRED)
 
 install(
   DIRECTORY config launch urdf rviz

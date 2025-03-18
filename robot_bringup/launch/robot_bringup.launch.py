@@ -39,6 +39,11 @@ def generate_launch_description():
             default_value='False',
             description='Launch RVIZ on startup'))
     declared_arguments.append(
+        DeclareLaunchArgument(
+            'use_joy',
+            default_value='False',
+            description='Use joystick control'))
+    declared_arguments.append(
         SetEnvironmentVariable(
             'RCUTILS_COLORIZED_OUTPUT', '1'))
 
@@ -47,6 +52,7 @@ def generate_launch_description():
     namespace = LaunchConfiguration('namespace')
     record = LaunchConfiguration('record')
     use_rviz = LaunchConfiguration('use_rviz')
+    use_joy = LaunchConfiguration('use_joy')
 
     # Package Path
     package_path = get_package_share_directory('robot_bringup')
@@ -118,6 +124,9 @@ def generate_launch_description():
         output='both',
         remappings=[
             ('~/robot_description', 'robot_description'),
+            ('/mecanum_drive_controller/reference_unstamped', '/cmd_vel'),
+            ('/mecanum_drive_controller/tf_odometry', '/tf'),
+            ('/mecanum_drive_controller/odometry', '/odom'),
         ],
         on_exit=Shutdown(),
     )
@@ -202,6 +211,16 @@ def generate_launch_description():
         condition=IfCondition(record),
     )
 
+    joy_node = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            [package_path, '/launch/joy.launch.py']
+        ),
+        launch_arguments={
+            'use_sim_time': use_sim_time
+        }.items(),
+        condition=IfCondition(use_joy),
+    )
+
     nodes = [
         gz_spawn_entity,
         gazebo,
@@ -211,7 +230,8 @@ def generate_launch_description():
         joint_state_broadcaster_spawner,
         delay_rviz_after_joint_state_broadcaster_spawner,
         delay_mecanum_drive_controller_spawner_after_joint_state_broadcaster_spawner,
-        rosbag_recorder_launch
+        rosbag_recorder_launch,
+        joy_node
     ]
 
     return LaunchDescription(declared_arguments + nodes)
