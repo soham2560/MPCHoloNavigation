@@ -75,7 +75,7 @@ ROS2 Setup to perform MPC based Holonomic Navigation for Robotics: Planning and 
 
   To interact with the drive, you can use the `teleop_twist_keyboard` node by launching it as follows
   ```bash
-  ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -p stamped:=true
+  ros2 run teleop_twist_keyboard teleop_twist_keyboard
   ```
   or make the arg `use_joy:=True` while launching when you have a Joystick Controller connected
 
