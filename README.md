@@ -20,25 +20,29 @@ ROS2 Setup to perform MPC based Holonomic Navigation for Robotics: Planning and 
 - To start container
     - Open Command Pallete with `Ctrl+Shift+P`
     - Select Option to Rebuild and Reopen Container
-### Action Buttons
-We use the [VSCode Action Button Extension](https://marketplace.visualstudio.com/items?itemName=seunlanlege.action-buttons) to facilitate development. They are not necessary but certainly do help. To access these buttons you may need to enable it through the Extensions Tab in VSCode, though the extension should download automatically on container startup. The available buttons are as follows:
-- `Build`
 
-  Builds the workspace packages upto `robot_bringup`
+  ### Action Buttons
+  We use the [VSCode Action Button Extension](https://marketplace.visualstudio.com/items?itemName=seunlanlege.action-buttons) to facilitate development. They are not necessary but certainly do help. To access these buttons you may need to enable it through the Extensions Tab in VSCode, though the extension should download automatically on container startup. The available buttons are as follows:
+  - `Build`
 
-  ```bash
-  colcon build --symlink-install --packages-up-to robot_bringup
-  ```
+    Builds the workspace packages upto `robot_bringup`
 
-- `Import Libs`
+    ```bash
+    colcon build --symlink-install --packages-up-to robot_bringup
+    ```
 
-  Uses [vcstool](https://github.com/dirk-thomas/vcstool) to import the repositories listed in [dep.repos](dep.repos)
+  - `Import Libs`
 
-  ```bash
-  rm -rf /ros2_ws/src/dep_repos && mkdir -p /ros2_ws/src/dep_repos && vcs import /ros2_ws/src/dep_repos < /ros2_ws/src/dep.repos
-  ```
+    Uses [vcstool](https://github.com/dirk-thomas/vcstool) to import the repositories listed in [dep.repos](dep.repos)
 
-Note: Remember to use `Import Libs` on every fresh container startup (not necessary on reopen)
+    ```bash
+    rm -rf /ros2_ws/src/dep_repos && mkdir -p /ros2_ws/src/dep_repos && vcs import /ros2_ws/src/dep_repos < /ros2_ws/src/dep.repos
+    ```
+
+  Note: Remember to use `Import Libs` on every fresh container startup (not necessary on reopen)
+
+## Hardware Setup
+  Information about the Hardware Setup can be found [here](/docs/hardware.md)
 
 ## How to Use
 - **Build and Source the workspace**
