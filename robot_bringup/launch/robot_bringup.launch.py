@@ -108,7 +108,7 @@ def generate_launch_description():
         parameters=[
             {'use_sim_time': use_sim_time}],
         condition=IfCondition(use_sim_time),
-        arguments=['/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock']
+        arguments=['/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock' , '/scan@sensor_msgs/msg/LaserScan@gz.msgs.LaserScan' ]
     )
 
     # Nodes
