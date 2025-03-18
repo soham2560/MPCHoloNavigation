@@ -65,6 +65,7 @@ Note: Remember to use `Import Libs` on every fresh container startup (not necess
   | `namespace`   | `""` (empty)  | Namespace for the launched nodes.              |
   | `record`      | `False`      | Enable recording to a rosbag.                  |
   | `use_rviz`    | `False`      | Launch RViz on startup.                        |
+  | `use_joy`    | `False`      | Use joystick control.                        |
 
 - **Interact**
 
@@ -72,5 +73,6 @@ Note: Remember to use `Import Libs` on every fresh container startup (not necess
   ```bash
   ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -p stamped:=true
   ```
+  or make the arg `use_joy:=True` while launching when you have a Joystick Controller connected
 
 Note: The README's in this repository are inspired by [this](https://github.com/TheProjectsGuy/MR21-CS7.503)
