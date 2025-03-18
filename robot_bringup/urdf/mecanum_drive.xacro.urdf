@@ -1,5 +1,7 @@
 <?xml version="1.0"?>
-<robot name="mecanum_vehicle" xmlns:xacro="http://www.ros.org/wiki/xacro" xmlns:gz="http://gazebosim.org/schema">
+<robot name="mecanum_vehicle"
+  xmlns:xacro="http://www.ros.org/wiki/xacro"
+  xmlns:gz="http://gazebosim.org/schema">
 
   <!-- ARGS -->
   <xacro:arg name="USE_WITH_SIM" default="false" />
@@ -38,13 +40,7 @@
     <inertial>
       <origin xyz="0 -0 0.1" rpy="0 0 0"/>
       <mass value="1.5"/>
-      <inertia
-        ixx="0.13"
-        ixy="0.0"
-        ixz="0.0"
-        iyy="0.42"
-        iyz="0.0"
-        izz="0.48"/>
+      <inertia ixx="0.13" ixy="0.0" ixz="0.0" iyy="0.42" iyz="0.0" izz="0.48"/>
     </inertial>
   </link>
 
@@ -70,12 +66,7 @@
     </visual>
     <inertial>
       <mass value="2"/>
-      <inertia ixx="0.145"
-               ixy="0.0"
-               ixz="0.0"
-               iyy="0.145"
-               iyz="0.0"
-               izz="0.125"/>
+      <inertia ixx="0.145" ixy="0.0" ixz="0.0" iyy="0.145" iyz="0.0" izz="0.125"/>
     </inertial>
   </link>
 
@@ -101,13 +92,8 @@
     </visual>
     <inertial>
       <mass value="2"/>
-      <inertia ixx="0.145"
-               ixy="0.0"
-               ixz="0.0"
-               iyy="0.145"
-               iyz="0.0"
-               izz="0.125"/>
-      </inertial>
+      <inertia ixx="0.145" ixy="0.0" ixz="0.0" iyy="0.145" iyz="0.0" izz="0.125"/>
+    </inertial>
   </link>
 
   <!-- rear left wheel -->
@@ -132,17 +118,12 @@
     </visual>
     <inertial>
       <mass value="2"/>
-      <inertia ixx="0.145"
-               ixy="0.0"
-               ixz="0.0"
-               iyy="0.145"
-               iyz="0.0"
-               izz="0.125"/>
+      <inertia ixx="0.145" ixy="0.0" ixz="0.0" iyy="0.145" iyz="0.0" izz="0.125"/>
     </inertial>
   </link>
 
   <!-- rear right wheel -->
-  
+
   <joint name="rear_right_wheel_joint" type="continuous">
     <origin xyz="-0.23 -0.26 0.076" rpy="-${pi/2} 0 0"/>
     <parent link="base_link"/>
@@ -164,13 +145,35 @@
     </visual>
     <inertial>
       <mass value="2"/>
-      <inertia ixx="0.145"
-               ixy="0.0"
-               ixz="0.0"
-               iyy="0.145"
-               iyz="0.0"
-               izz="0.125"/>
-      </inertial>
+      <inertia ixx="0.145" ixy="0.0" ixz="0.0" iyy="0.145" iyz="0.0" izz="0.125"/>
+    </inertial>
+  </link>
+
+  <!-- Lidar Link -->
+
+  <joint name="laser_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="laser_frame"/>
+    <origin xyz="0 0 0.176" rpy="0 0 0"/>
+  </joint>
+
+  <link name="laser_frame">
+    <visual>
+      <geometry>
+        <cylinder radius="0.05" length="0.04"/>
+      </geometry>
+      <material name="red"/>
+    </visual>
+    <collision>
+      <geometry>
+        <cylinder radius="0.05" length="0.04"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.1"/>
+      <inertia ixx="0.0000583" ixy="0.0" ixz="0.0" iyy="0.0000583" iyz="0.0" izz="0.000025"/>
+    </inertial>
   </link>
 
   <!-- To emulate Mecanum wheels in Gazebo with spherical collisions it
@@ -228,7 +231,36 @@
         </surface>
       </collision>
     </gazebo>
+    <gazebo reference="laser_frame">
+      <sensor name="laser" type="gpu_lidar">
+        <pose> 0 0 0 0 0 0 </pose>
+        <always_on>true</always_on>
+        <visualize>true</visualize>
+        <update_rate>10</update_rate>
+        <topic>scan</topic>
+        <gz_frame_id>laser_frame</gz_frame_id>
+        <lidar>
+          <scan>
+            <horizontal>
+              <samples>360</samples>
+              <min_angle>-3.14</min_angle>
+              <max_angle>3.14</max_angle>
+            </horizontal>
+          </scan>
+          <range>
+            <min>0.3</min>
+            <max>12</max>
+          </range>
+        </lidar>
+        <plugin filename="gz-sim-sensors-system" name="gz::sim::systems::Sensors">
+          <render_engine>ogre2</render_engine>
+        </plugin>
+      </sensor>
+    </gazebo>
   </xacro:if>
+
+
+
 
   <!-- Define the vehicles hardware, command and state interfaces -->
   <ros2_control name="MecanumDrive" type="actuator">
@@ -297,71 +329,5 @@
       </plugin>
     </gazebo>
   </xacro:if>
-
-  <xacro:macro name="inertial_cylinder" params="mass length radius *origin">
-        <inertial>
-            <xacro:insert_block name="origin"/>
-            <mass value="${mass}" />
-            <inertia ixx="${(1/12) * mass * (3*radius*radius + length*length)}" ixy="0.0" ixz="0.0"
-                    iyy="${(1/12) * mass * (3*radius*radius + length*length)}" iyz="0.0"
-                    izz="${(1/2) * mass * (radius*radius)}" />
-        </inertial>
-    </xacro:macro>
-
-  <joint name="laser_joint" type="fixed">
-        <parent link="base_link"/>
-        <child link="laser_frame"/>
-        <origin xyz="0 0 0.176" rpy="0 0 0"/>
-  </joint>
-
-  <link name="laser_frame">
-    <visual>
-        <geometry>
-            <cylinder radius="0.05" length="0.04"/>
-        </geometry>
-        <material name="red"/>
-    </visual>
-    <collision>
-        <geometry>
-            <cylinder radius="0.05" length="0.04"/>
-        </geometry>
-    </collision>
-    <xacro:inertial_cylinder mass="0.1" length="0.04" radius="0.05">
-        <origin xyz="0 0 0" rpy="0 0 0"/>
-    </xacro:inertial_cylinder>
-    
-  </link>
-  
-    <gazebo reference="laser_frame">
-      <sensor name="laser" type="gpu_lidar">
-         <pose> 0 0 0 0 0 0 </pose>
-         <always_on>true</always_on>
-         <visualize>true</visualize>
-         <update_rate>10</update_rate>
-         <topic>scan</topic>
-         <gz_frame_id>laser_frame</gz_frame_id>
-         <lidar>
-            <scan>
-               <horizontal>
-               <samples>360</samples>
-               <min_angle>-3.14</min_angle>
-               <max_angle>3.14</max_angle>
-               </horizontal>
-            </scan>
-            <range>
-               <min>0.3</min>
-               <max>12</max>
-            </range>
-         </lidar>
-      <plugin
-            filename="libignition-gazebo-sensors-system.so"
-            name="ignition::gazebo::systems::Sensors">
-            <render_engine>ogre2</render_engine>
-        </plugin>
-      </sensor>
-
-
-
-   </gazebo>
 
 </robot>
