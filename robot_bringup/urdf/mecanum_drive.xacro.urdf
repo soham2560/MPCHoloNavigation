@@ -123,7 +123,6 @@
   </link>
 
   <!-- rear right wheel -->
-
   <joint name="rear_right_wheel_joint" type="continuous">
     <origin xyz="-0.23 -0.26 0.076" rpy="-${pi/2} 0 0"/>
     <parent link="base_link"/>
@@ -150,7 +149,6 @@
   </link>
 
   <!-- Lidar Link -->
-
   <joint name="laser_joint" type="fixed">
     <parent link="base_link"/>
     <child link="laser_frame"/>
@@ -231,6 +229,9 @@
         </surface>
       </collision>
     </gazebo>
+  </xacro:if>
+
+  <xacro:if value="$(arg USE_WITH_SIM)">
     <gazebo reference="laser_frame">
       <sensor name="laser" type="gpu_lidar">
         <pose> 0 0 0 0 0 0 </pose>
@@ -258,9 +259,6 @@
       </sensor>
     </gazebo>
   </xacro:if>
-
-
-
 
   <!-- Define the vehicles hardware, command and state interfaces -->
   <ros2_control name="MecanumDrive" type="actuator">
