@@ -1,5 +1,7 @@
 <?xml version="1.0"?>
-<robot name="mecanum_vehicle" xmlns:xacro="http://www.ros.org/wiki/xacro" xmlns:gz="http://gazebosim.org/schema">
+<robot name="mecanum_vehicle"
+  xmlns:xacro="http://www.ros.org/wiki/xacro"
+  xmlns:gz="http://gazebosim.org/schema">
 
   <!-- ARGS -->
   <xacro:arg name="USE_WITH_SIM" default="false" />
@@ -15,6 +17,9 @@
   </material>
   <material name="white">
     <color rgba="1 1 1 1.0"/>
+  </material>
+  <material name="red">
+    <color rgba="1 0 0 1"/>
   </material>
 
   <!-- Base Link -->
@@ -35,13 +40,7 @@
     <inertial>
       <origin xyz="0 -0 0.1" rpy="0 0 0"/>
       <mass value="1.5"/>
-      <inertia
-        ixx="0.13"
-        ixy="0.0"
-        ixz="0.0"
-        iyy="0.42"
-        iyz="0.0"
-        izz="0.48"/>
+      <inertia ixx="0.13" ixy="0.0" ixz="0.0" iyy="0.42" iyz="0.0" izz="0.48"/>
     </inertial>
   </link>
 
@@ -67,12 +66,7 @@
     </visual>
     <inertial>
       <mass value="2"/>
-      <inertia ixx="0.145"
-               ixy="0.0"
-               ixz="0.0"
-               iyy="0.145"
-               iyz="0.0"
-               izz="0.125"/>
+      <inertia ixx="0.145" ixy="0.0" ixz="0.0" iyy="0.145" iyz="0.0" izz="0.125"/>
     </inertial>
   </link>
 
@@ -98,13 +92,8 @@
     </visual>
     <inertial>
       <mass value="2"/>
-      <inertia ixx="0.145"
-               ixy="0.0"
-               ixz="0.0"
-               iyy="0.145"
-               iyz="0.0"
-               izz="0.125"/>
-      </inertial>
+      <inertia ixx="0.145" ixy="0.0" ixz="0.0" iyy="0.145" iyz="0.0" izz="0.125"/>
+    </inertial>
   </link>
 
   <!-- rear left wheel -->
@@ -129,17 +118,11 @@
     </visual>
     <inertial>
       <mass value="2"/>
-      <inertia ixx="0.145"
-               ixy="0.0"
-               ixz="0.0"
-               iyy="0.145"
-               iyz="0.0"
-               izz="0.125"/>
+      <inertia ixx="0.145" ixy="0.0" ixz="0.0" iyy="0.145" iyz="0.0" izz="0.125"/>
     </inertial>
   </link>
 
   <!-- rear right wheel -->
-  
   <joint name="rear_right_wheel_joint" type="continuous">
     <origin xyz="-0.23 -0.26 0.076" rpy="-${pi/2} 0 0"/>
     <parent link="base_link"/>
@@ -161,13 +144,34 @@
     </visual>
     <inertial>
       <mass value="2"/>
-      <inertia ixx="0.145"
-               ixy="0.0"
-               ixz="0.0"
-               iyy="0.145"
-               iyz="0.0"
-               izz="0.125"/>
-      </inertial>
+      <inertia ixx="0.145" ixy="0.0" ixz="0.0" iyy="0.145" iyz="0.0" izz="0.125"/>
+    </inertial>
+  </link>
+
+  <!-- Lidar Link -->
+  <joint name="laser_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="laser_frame"/>
+    <origin xyz="0 0 0.176" rpy="0 0 0"/>
+  </joint>
+
+  <link name="laser_frame">
+    <visual>
+      <geometry>
+        <cylinder radius="0.05" length="0.04"/>
+      </geometry>
+      <material name="red"/>
+    </visual>
+    <collision>
+      <geometry>
+        <cylinder radius="0.05" length="0.04"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.1"/>
+      <inertia ixx="0.0000583" ixy="0.0" ixz="0.0" iyy="0.0000583" iyz="0.0" izz="0.000025"/>
+    </inertial>
   </link>
 
   <!-- To emulate Mecanum wheels in Gazebo with spherical collisions it
@@ -224,6 +228,35 @@
           </friction>
         </surface>
       </collision>
+    </gazebo>
+  </xacro:if>
+
+  <xacro:if value="$(arg USE_WITH_SIM)">
+    <gazebo reference="laser_frame">
+      <sensor name="laser" type="gpu_lidar">
+        <pose> 0 0 0 0 0 0 </pose>
+        <always_on>true</always_on>
+        <visualize>true</visualize>
+        <update_rate>10</update_rate>
+        <topic>scan</topic>
+        <gz_frame_id>laser_frame</gz_frame_id>
+        <lidar>
+          <scan>
+            <horizontal>
+              <samples>360</samples>
+              <min_angle>-${pi}</min_angle>
+              <max_angle>${pi}</max_angle>
+            </horizontal>
+          </scan>
+          <range>
+            <min>0.3</min>
+            <max>12</max>
+          </range>
+        </lidar>
+        <plugin filename="gz-sim-sensors-system" name="gz::sim::systems::Sensors">
+          <render_engine>ogre2</render_engine>
+        </plugin>
+      </sensor>
     </gazebo>
   </xacro:if>
 

@@ -9,6 +9,7 @@ ROS2 Setup to perform MPC based Holonomic Navigation for Robotics: Planning and 
   - [Table of contents](#table-of-contents)
   - [Development Setup](#development-setup)
     - [Action Buttons](#action-buttons)
+  - [Hardware Setup](#hardware-setup)
   - [How to Use](#how-to-use)
 
 

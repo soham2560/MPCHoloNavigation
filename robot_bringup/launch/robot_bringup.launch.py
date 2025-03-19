@@ -84,7 +84,7 @@ def generate_launch_description():
         condition=IfCondition(use_sim_time),
         arguments=[
             '-name', 'robot',
-            '-x', str(0.0),
+            '-x', str(-3.5),
             '-y', str(0.0),
             '-z', str(0.0),
             '-Y', str(0.0),
@@ -96,7 +96,7 @@ def generate_launch_description():
             PythonLaunchDescriptionSource(
                 [os.path.join(get_package_share_directory('ros_gz_sim'),
                               'launch', 'gz_sim.launch.py')]),
-            launch_arguments=[('gz_args', ['-r v 4 empty.sdf'])],
+            launch_arguments=[('gz_args', ['-r v 4 shapes.sdf'])],
             condition=IfCondition(use_sim_time))
     
     # Bridge
@@ -108,7 +108,7 @@ def generate_launch_description():
         parameters=[
             {'use_sim_time': use_sim_time}],
         condition=IfCondition(use_sim_time),
-        arguments=['/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock']
+        arguments=['/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock' , '/scan@sensor_msgs/msg/LaserScan@gz.msgs.LaserScan' ]
     )
 
     # Nodes
