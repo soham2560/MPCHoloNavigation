@@ -96,4 +96,3 @@ ROS2 Setup to perform MPC based Holonomic Navigation for Robotics: Planning and 
   ```
   or make the arg `use_joy:=True` while launching when you have a Joystick Controller connected
 
-
