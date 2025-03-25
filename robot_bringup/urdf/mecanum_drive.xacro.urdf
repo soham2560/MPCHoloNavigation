@@ -39,9 +39,18 @@
     </visual>
     <inertial>
       <origin xyz="0 -0 0.1" rpy="0 0 0"/>
-      <mass value="1.5"/>
+      <mass value="50"/>
       <inertia ixx="0.13" ixy="0.0" ixz="0.0" iyy="0.42" iyz="0.0" izz="0.48"/>
     </inertial>
+  </link>
+
+  <joint name="base_footprint_joint" type='fixed'>
+    <origin xyz="0.0 0.0 0.0" rpy="0 0 0"/>
+    <parent link="base_link"/>
+    <child link="base_footprint"/>
+  </joint>
+
+  <link name="base_footprint">
   </link>
 
   <!-- front left wheel -->
@@ -65,7 +74,7 @@
       <material name="black"/>
     </visual>
     <inertial>
-      <mass value="2"/>
+      <mass value="20"/>
       <inertia ixx="0.145" ixy="0.0" ixz="0.0" iyy="0.145" iyz="0.0" izz="0.125"/>
     </inertial>
   </link>
@@ -91,7 +100,7 @@
       <material name="black"/>
     </visual>
     <inertial>
-      <mass value="2"/>
+      <mass value="20"/>
       <inertia ixx="0.145" ixy="0.0" ixz="0.0" iyy="0.145" iyz="0.0" izz="0.125"/>
     </inertial>
   </link>
@@ -117,7 +126,7 @@
       <material name="black"/>
     </visual>
     <inertial>
-      <mass value="2"/>
+      <mass value="20"/>
       <inertia ixx="0.145" ixy="0.0" ixz="0.0" iyy="0.145" iyz="0.0" izz="0.125"/>
     </inertial>
   </link>
@@ -143,7 +152,7 @@
       <material name="black"/>
     </visual>
     <inertial>
-      <mass value="2"/>
+      <mass value="20"/>
       <inertia ixx="0.145" ixy="0.0" ixz="0.0" iyy="0.145" iyz="0.0" izz="0.125"/>
     </inertial>
   </link>
@@ -169,7 +178,7 @@
     </collision>
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0"/>
-      <mass value="0.1"/>
+      <mass value="1"/>
       <inertia ixx="0.0000583" ixy="0.0" ixz="0.0" iyy="0.0000583" iyz="0.0" izz="0.000025"/>
     </inertial>
   </link>
@@ -320,9 +329,9 @@
         <parameters>$(find robot_bringup)/config/mecanum_drive_controller.yaml</parameters>
         <ros>
           <namespace>/$(arg NAMESPACE)</namespace>
-          <remapping>/mecanum_drive_controller/reference_unstamped:=/cmd_vel</remapping>
-          <remapping>/mecanum_drive_controller/odom:=/odom</remapping>
+          <remapping>/mecanum_drive_controller/odometry:=/odom</remapping>
           <remapping>/mecanum_drive_controller/tf_odometry:=/tf</remapping>
+          <remapping>/mecanum_drive_controller/reference_unstamped:=/cmd_vel</remapping>
         </ros>
       </plugin>
     </gazebo>

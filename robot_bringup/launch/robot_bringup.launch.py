@@ -108,7 +108,7 @@ def generate_launch_description():
         parameters=[
             {'use_sim_time': use_sim_time}],
         condition=IfCondition(use_sim_time),
-        arguments=['/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock' , '/scan@sensor_msgs/msg/LaserScan@gz.msgs.LaserScan' ]
+        arguments=['/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock' ,'/scan@sensor_msgs/msg/LaserScan@gz.msgs.LaserScan' ]
     )
 
     # Nodes
@@ -124,9 +124,9 @@ def generate_launch_description():
         output='both',
         remappings=[
             ('~/robot_description', 'robot_description'),
-            ('/mecanum_drive_controller/reference_unstamped', '/cmd_vel'),
-            ('/mecanum_drive_controller/tf_odometry', '/tf'),
             ('/mecanum_drive_controller/odometry', '/odom'),
+            ('/mecanum_drive_controller/tf_odometry', '/tf'),
+            ('/mecanum_drive_controller/reference_unstamped', '/cmd_vel'),
         ],
         on_exit=Shutdown(),
     )
