@@ -122,6 +122,8 @@ Visualization Manager:
           Value: true
         laser_frame:
           Value: true
+        map:
+          Value: true
         odom:
           Value: true
         rear_left_wheel:
@@ -134,6 +136,8 @@ Visualization Manager:
       Show Axes: true
       Show Names: false
       Tree:
+        map:
+          {}
         odom:
           base_link:
             base_footprint:
