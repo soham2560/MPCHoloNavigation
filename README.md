@@ -83,7 +83,12 @@ ROS2 Setup to perform MPC based Holonomic Navigation for Robotics: Planning and 
 Note: The README's in this repository are inspired by [this](https://github.com/TheProjectsGuy/MR21-CS7.503)
 
 - **SLAM**
+  
+```bash
   ros2 launch slam_toolbox online_async_launch.py slam_params_file:=/ros2_ws/src/robot_bringup/config/mapper_params_online_async.yaml
+```
 
 - **NAV2**
+  ```bash
   ros2 launch nav2_bringup navigation_launch.py use_sim_time:=true
+  ```
