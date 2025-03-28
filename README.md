@@ -80,15 +80,16 @@ ROS2 Setup to perform MPC based Holonomic Navigation for Robotics: Planning and 
   ```
   or make the arg `use_joy:=True` while launching when you have a Joystick Controller connected
 
-Note: The README's in this repository are inspired by [this](https://github.com/TheProjectsGuy/MR21-CS7.503)
 
-- **SLAM**
-  
+- **SLAM-toolbox**
 ```bash
-  ros2 launch slam_toolbox online_async_launch.py slam_params_file:=/ros2_ws/src/robot_bringup/config/mapper_params_online_async.yaml
+  ros2 launch robot_bringup online_async_launch.py
 ```
 
 - **NAV2**
   ```bash
-  ros2 launch nav2_bringup navigation_launch.py use_sim_time:=true
+  ros2 launch robot_bringup navigation_launch.py use_sim_time:=true
   ```
+
+
+Note: The README's in this repository are inspired by [this](https://github.com/TheProjectsGuy/MR21-CS7.503)
