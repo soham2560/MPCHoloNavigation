@@ -159,7 +159,7 @@ controller_server:
       decel_lim_theta: -3.2
       vx_samples: 20
       vy_samples: 20 #changed for holonomic mode
-      vtheta_samples: 20
+      vtheta_samples: 5
       sim_time: 1.7
       linear_granularity: 0.05
       angular_granularity: 0.025
@@ -176,10 +176,10 @@ controller_server:
       GoalAlign.forward_point_distance: 0.1
       PathDist.scale: 32.0
       GoalDist.scale: 24.0
-      RotateToGoal.scale: 32.0
+      RotateToGoal.scale: 5.0
       RotateToGoal.slowing_factor: 5.0
       RotateToGoal.lookahead_time: -1.0
-      Twirling.scale: 1.0 #added for holonomic mode
+      Twirling.scale: 40.0 #added for holonomic mode
 
 local_costmap:
   local_costmap:
@@ -341,10 +341,10 @@ velocity_smoother:
     smoothing_frequency: 20.0
     scale_velocities: False
     feedback: "OPEN_LOOP"
-    max_velocity: [0.26, 0.0, 1.0]
-    min_velocity: [-0.26, 0.0, -1.0]
-    max_accel: [2.5, 0.0, 3.2]
-    max_decel: [-2.5, 0.0, -3.2]
+    max_velocity: [0.26, 0.26, 1.0]
+    min_velocity: [-0.26, -0.26, -1.0]
+    max_accel: [2.5, 2.5, 3.2]
+    max_decel: [-2.5, -2.5, -3.2]
     odom_topic: "odom"
     odom_duration: 0.1
     deadband_velocity: [0.0, 0.0, 0.0]
