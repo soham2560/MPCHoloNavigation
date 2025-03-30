@@ -160,27 +160,52 @@
   <!-- Lidar Link -->
   <joint name="laser_joint" type="fixed">
     <parent link="base_link"/>
-    <child link="laser_frame"/>
+    <child link="velodyne_base_link"/>
     <origin xyz="0 0 0.176" rpy="0 0 0"/>
   </joint>
 
-  <link name="laser_frame">
+  <link name="velodyne_base_link">
+    <inertial>
+      <mass value="0.83"/>
+      <origin xyz="0 0 0.03585"/>
+      <inertia ixx="${(0.83 * (3.0*0.0516*0.0516 + 0.0717*0.0717)) / 12.0}" ixy="0" ixz="0" iyy="${(0.83 * (3.0*0.0516*0.0516 + 0.0717*0.0717)) / 12.0}" iyz="0" izz="${0.5 * 0.83 * (0.0516*0.0516)}"/>
+    </inertial>
     <visual>
       <geometry>
-        <cylinder radius="0.05" length="0.04"/>
+        <mesh filename="file://$(find robot_bringup)/meshes/VLP16/VLP16_base_1.dae"/>
       </geometry>
-      <material name="red"/>
+    </visual>
+    <visual>
+      <geometry>
+        <mesh filename="file://$(find robot_bringup)/meshes/VLP16/VLP16_base_2.dae"/>
+      </geometry>
     </visual>
     <collision>
+      <origin rpy="0 0 0" xyz="0 0 0.03585"/>
       <geometry>
-        <cylinder radius="0.05" length="0.04"/>
+        <cylinder radius="0.0516" length="0.0717"/>
       </geometry>
     </collision>
+  </link>
+
+  <joint name="velodyne_base_scan_joint" type="fixed">
+    <origin xyz="0 0 0.0377" rpy="0 0 0"/>
+    <parent link="velodyne_base_link"/>
+    <child link="laser_frame"/>
+  </joint>
+
+  <link name="laser_frame">
     <inertial>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
-      <mass value="1"/>
-      <inertia ixx="0.0000583" ixy="0.0" ixz="0.0" iyy="0.0000583" iyz="0.0" izz="0.000025"/>
+      <mass value="0.01"/>
+      <origin xyz="0 0 0"/>
+      <inertia ixx="1e-7" ixy="0" ixz="0" iyy="1e-7" iyz="0" izz="1e-7"/>
     </inertial>
+    <visual>
+      <origin xyz="0 0 -0.0377"/>
+      <geometry>
+        <mesh filename="file://$(find robot_bringup)/meshes/VLP16/VLP16_scan.dae"/>
+      </geometry>
+    </visual>
   </link>
 
   <!-- To emulate Mecanum wheels in Gazebo with spherical collisions it
