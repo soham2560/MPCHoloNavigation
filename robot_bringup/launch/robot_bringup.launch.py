@@ -221,6 +221,12 @@ def generate_launch_description():
         condition=IfCondition(use_joy),
     )
 
+    velodyne_hw_if = IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+                [os.path.join(get_package_share_directory('robot_bringup'),
+                              'launch', 'velodyne_hw_if.launch.py')]),
+            condition=UnlessCondition(use_sim_time))
+
     nodes = [
         gz_spawn_entity,
         gazebo,
@@ -231,7 +237,8 @@ def generate_launch_description():
         delay_rviz_after_joint_state_broadcaster_spawner,
         delay_mecanum_drive_controller_spawner_after_joint_state_broadcaster_spawner,
         rosbag_recorder_launch,
-        joy_node
+        joy_node,
+        velodyne_hw_if
     ]
 
     return LaunchDescription(declared_arguments + nodes)
