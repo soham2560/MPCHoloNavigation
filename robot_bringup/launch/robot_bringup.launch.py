@@ -96,7 +96,7 @@ def generate_launch_description():
             PythonLaunchDescriptionSource(
                 [os.path.join(get_package_share_directory('ros_gz_sim'),
                               'launch', 'gz_sim.launch.py')]),
-            launch_arguments=[('gz_args', ['-r v 4 shapes.sdf'])],
+            launch_arguments=[('gz_args', ['-r v 4 ./src/robot_bringup/worlds/obstacles.world'])],
             condition=IfCondition(use_sim_time))
     
     # Bridge
