@@ -18,10 +18,9 @@ find_package(robot_state_publisher REQUIRED)
 find_package(urdf REQUIRED)
 find_package(joy REQUIRED)
 find_package(teleop_twist_joy REQUIRED)
-find_package(velodyne REQUIRED)
 
 install(
-  DIRECTORY config launch urdf rviz meshes
+  DIRECTORY config launch urdf rviz meshes worlds
   DESTINATION share/${PROJECT_NAME}
 )
 

@@ -19,16 +19,6 @@ ros-humble-rosbag2-storage-mcap
 ros-humble-slam-toolbox
 ros-humble-navigation2
 ros-humble-nav2-bringup
-ros-humble-velodyne
-ros-humble-velodyne-description
-ros-humble-velodyne-driver
-ros-humble-velodyne-driver-dbgsym
-ros-humble-velodyne-laserscan
-ros-humble-velodyne-laserscan-dbgsym
-ros-humble-velodyne-msgs
-ros-humble-velodyne-msgs-dbgsym
-ros-humble-velodyne-pointcloud
-ros-humble-velodyne-pointcloud-dbgsym
 iproute2
 can-utils
 net-tools
