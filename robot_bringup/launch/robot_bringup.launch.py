@@ -96,7 +96,7 @@ def generate_launch_description():
             PythonLaunchDescriptionSource(
                 [os.path.join(get_package_share_directory('ros_gz_sim'),
                               'launch', 'gz_sim.launch.py')]),
-            launch_arguments=[('gz_args', ['-r v 4 shapes.sdf'])],
+            launch_arguments=[('gz_args', ['-r v 4 ./src/robot_bringup/worlds/obstacles.world'])],
             condition=IfCondition(use_sim_time))
     
     # Bridge
@@ -108,7 +108,7 @@ def generate_launch_description():
         parameters=[
             {'use_sim_time': use_sim_time}],
         condition=IfCondition(use_sim_time),
-        arguments=['/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock' , '/scan@sensor_msgs/msg/LaserScan@gz.msgs.LaserScan' ]
+        arguments=['/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock' ,'/scan@sensor_msgs/msg/LaserScan@gz.msgs.LaserScan' ]
     )
 
     # Nodes
@@ -124,9 +124,9 @@ def generate_launch_description():
         output='both',
         remappings=[
             ('~/robot_description', 'robot_description'),
-            ('/mecanum_drive_controller/reference_unstamped', '/cmd_vel'),
-            ('/mecanum_drive_controller/tf_odometry', '/tf'),
             ('/mecanum_drive_controller/odometry', '/odom'),
+            ('/mecanum_drive_controller/tf_odometry', '/tf'),
+            ('/mecanum_drive_controller/reference_unstamped', '/cmd_vel'),
         ],
         on_exit=Shutdown(),
     )
@@ -221,6 +221,12 @@ def generate_launch_description():
         condition=IfCondition(use_joy),
     )
 
+    # velodyne_hw_if = IncludeLaunchDescription(
+    #         PythonLaunchDescriptionSource(
+    #             [os.path.join(get_package_share_directory('robot_bringup'),
+    #                           'launch', 'velodyne_hw_if.launch.py')]),
+    #         condition=UnlessCondition(use_sim_time))
+
     nodes = [
         gz_spawn_entity,
         gazebo,
@@ -232,6 +238,7 @@ def generate_launch_description():
         delay_mecanum_drive_controller_spawner_after_joint_state_broadcaster_spawner,
         rosbag_recorder_launch,
         joy_node
+        # velodyne_hw_if
     ]
 
     return LaunchDescription(declared_arguments + nodes)

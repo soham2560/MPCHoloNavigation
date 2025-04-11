@@ -86,4 +86,33 @@ ROS2 Setup to perform MPC based Holonomic Navigation for Robotics: Planning and 
   ```
   or make the arg `use_joy:=True` while launching when you have a Joystick Controller connected
 
+
+- **SLAM-toolbox**
+```bash
+  ros2 launch robot_bringup online_async_launch.py
+```
+
+- **NAV2**
+  ```bash
+  ros2 launch robot_bringup navigation_launch.py use_sim_time:=true
+  ```
+
+
 Note: The README's in this repository are inspired by [this](https://github.com/TheProjectsGuy/MR21-CS7.503)
+cd ..
+source install/setup.bash
+clear
+
+ros2 launch robot_bringup robot_bringup.launch.py use_sim_time:=False use_rviz:=True
+
+ros2 run teleop_twist_keyboard teleop_twist_keyboard
+
+ros2 launch robot_bringup online_async_launch.py
+
+sudo chmod +777 /dev/ttyUSB0
+ros2 launch ld08_driver ld08.launch.py
+
+
+sudo slcand -o -s8 -t sw -S 2000000 /dev/ttyUSB1 can0
+sudo ifconfig can0 txqueuelen 1000
+sudo ifconfig can0 up
