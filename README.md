@@ -74,7 +74,7 @@ ROS2 Setup to perform MPC based Holonomic Navigation for Robotics: Planning and 
 - **Launch**
 
   ```bash
-  ros2 launch robot_bringup robot_bringup.launch.py use_sim_time:=False use_rviz:=True
+  ros2 launch robot_bringup robot_bringup.launch.py use_rviz:=True use_slamtoolbox:=True use_nav2:=True use_sim_time:=False use_joy:=True
   ```
   Available arguments are as follows:
 
