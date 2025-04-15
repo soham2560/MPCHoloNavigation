@@ -264,6 +264,30 @@ def generate_launch_description():
         }.items(),
             condition=IfCondition(use_nav2))
 
+    # Delay start of rplidar_hw_if after `mecanum_drive_controller_spawner`
+    delay_rplidar_hw_if_after_mecanum_drive_controller_spawner = RegisterEventHandler(
+        event_handler=OnProcessExit(
+            target_action=mecanum_drive_controller_spawner,
+            on_exit=[rplidar_hw_if],
+        )
+    )
+
+    # Delay start of slam_toolbox after `mecanum_drive_controller_spawner`
+    delay_slam_toolbox_after_mecanum_drive_controller_spawner = RegisterEventHandler(
+        event_handler=OnProcessExit(
+            target_action=mecanum_drive_controller_spawner,
+            on_exit=[slam_toolbox],
+        )
+    )
+
+    # Delay start of nav2 after `mecanum_drive_controller_spawner`
+    delay_nav2_after_mecanum_drive_controller_spawner = RegisterEventHandler(
+        event_handler=OnProcessExit(
+            target_action=mecanum_drive_controller_spawner,
+            on_exit=[nav2],
+        )
+    )
+
     nodes = [
         gz_spawn_entity,
         gazebo,
@@ -275,9 +299,9 @@ def generate_launch_description():
         delay_mecanum_drive_controller_spawner_after_joint_state_broadcaster_spawner,
         rosbag_recorder_launch,
         joy_node,
-        rplidar_hw_if,
-        slam_toolbox,
-        nav2
+        delay_rplidar_hw_if_after_mecanum_drive_controller_spawner,
+        delay_slam_toolbox_after_mecanum_drive_controller_spawner,
+        delay_nav2_after_mecanum_drive_controller_spawner
     ]
 
     return LaunchDescription(declared_arguments + nodes)
