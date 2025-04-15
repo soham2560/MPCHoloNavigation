@@ -74,7 +74,7 @@ ROS2 Setup to perform MPC based Holonomic Navigation for Robotics: Planning and 
 - **Launch**
 
   ```bash
-  ros2 launch robot_bringup robot_bringup.launch.py use_sim_time:=False
+  ros2 launch robot_bringup robot_bringup.launch.py use_sim_time:=False use_rviz:=True
   ```
   Available arguments are as follows:
 
@@ -86,14 +86,10 @@ ROS2 Setup to perform MPC based Holonomic Navigation for Robotics: Planning and 
   | `use_rviz`    | `False`      | Launch RViz on startup.                        |
   | `use_joy`    | `False`      | Use joystick control.                        |
 
-- **Interact**
-
-  To interact with the drive, you can use the `teleop_twist_keyboard` node by launching it as follows
-  ```bash
-  ros2 run teleop_twist_keyboard teleop_twist_keyboard
-  ```
-  or make the arg `use_joy:=True` while launching when you have a Joystick Controller connected
-
+- **LIDAR Launch**
+```bash
+  ros2 launch ld08_driver ld08.launch.py
+```
 
 - **SLAM-toolbox**
 ```bash
@@ -102,24 +98,16 @@ ROS2 Setup to perform MPC based Holonomic Navigation for Robotics: Planning and 
 
 - **NAV2**
   ```bash
-  ros2 launch robot_bringup navigation_launch.py use_sim_time:=true
+  ros2 launch robot_bringup navigation_launch.py
   ```
 
+- **Interact**
+
+  To interact with the drive, you can use the `teleop_twist_keyboard` node by launching it as follows
+  ```bash
+  ros2 run teleop_twist_keyboard teleop_twist_keyboard
+  ```
+  or make the arg `use_joy:=True` while launching when you have a Joystick Controller connected
 
 Note: The README's in this repository are inspired by [this](https://github.com/TheProjectsGuy/MR21-CS7.503)
-
-colcon build --symlink-install
-
-cd ..
-source install/setup.bash
-clear
-
-ros2 launch robot_bringup robot_bringup.launch.py use_sim_time:=False use_rviz:=True
-
-ros2 run teleop_twist_keyboard teleop_twist_keyboard
-
-ros2 launch robot_bringup online_async_launch.py
-
-sudo chmod +777 /dev/ttyUSB0
-ros2 launch ld08_driver ld08.launch.py
 
