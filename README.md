@@ -99,6 +99,9 @@ ROS2 Setup to perform MPC based Holonomic Navigation for Robotics: Planning and 
 
 
 Note: The README's in this repository are inspired by [this](https://github.com/TheProjectsGuy/MR21-CS7.503)
+
+colcon build --symlink-install
+
 cd ..
 source install/setup.bash
 clear
@@ -112,7 +115,11 @@ ros2 launch robot_bringup online_async_launch.py
 sudo chmod +777 /dev/ttyUSB0
 ros2 launch ld08_driver ld08.launch.py
 
-
-sudo slcand -o -s8 -t sw -S 2000000 /dev/ttyUSB1 can0
+sudo chmod +777 /dev/ttyUSB0
+sudo slcand -o -s8 -t sw -S 2000000 /dev/ttyUSB0 can0
 sudo ifconfig can0 txqueuelen 1000
 sudo ifconfig can0 up
+
+
+sudo ip link set can0 type can bitrate 1000000
+sudo ip link set up can0
