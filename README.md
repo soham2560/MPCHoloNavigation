@@ -56,13 +56,21 @@ ROS2 Setup to perform MPC based Holonomic Navigation for Robotics: Planning and 
   ```
 
   Note: Ensure you've run `Import Libs` atleast once (or the equivalent command)
-- **To setup WiCAN** (only if working on hardware)
+- WiCAN Setup (⚠️ **_Deprecated_**: Look at USB2CAN below)
     ```bash
     sudo slcand -o -s8 -t sw -S 3000000 /dev/ttyUSB0 can0
     sudo ifconfig can0 txqueuelen 1000
     sudo ifconfig can0 up
     ```
     Note: You need to change `ttyUSB0` to the WiCAN device
+- **To setup USB2CAN** (only if working on hardware)
+
+    NOTE: This is to be on **host** (NOT in container), it is a one time process and won't have to be repeated again
+    ```bash
+    cd scripts
+    chmod +x usb2can_udev.sh
+    ./usb2can_udev.sh
+    ```
 - **Launch**
 
   ```bash
@@ -115,11 +123,3 @@ ros2 launch robot_bringup online_async_launch.py
 sudo chmod +777 /dev/ttyUSB0
 ros2 launch ld08_driver ld08.launch.py
 
-sudo chmod +777 /dev/ttyUSB0
-sudo slcand -o -s8 -t sw -S 2000000 /dev/ttyUSB0 can0
-sudo ifconfig can0 txqueuelen 1000
-sudo ifconfig can0 up
-
-
-sudo ip link set can0 type can bitrate 1000000
-sudo ip link set up can0
