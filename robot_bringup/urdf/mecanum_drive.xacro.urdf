@@ -307,7 +307,7 @@
     </hardware>
     <joint name="front_left_wheel_joint">
       <param name="node_id">2</param>
-      <param name="model">AK10_9</param>
+      <param name="model">AK60_6</param>
       <param name="control_mode">velocity</param>
       <param name="kd">1.0</param>
       <param name="reduction">-1.0</param>
@@ -317,7 +317,7 @@
     </joint>
     <joint name="front_right_wheel_joint">
       <param name="node_id">1</param>
-      <param name="model">AK10_9</param>
+      <param name="model">AK60_6</param>
       <param name="control_mode">velocity</param>
       <param name="kd">1.0</param>
       <param name="reduction">1.0</param>
