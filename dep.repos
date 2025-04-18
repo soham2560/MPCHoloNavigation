@@ -1,17 +1,17 @@
 repositories:
   gz_ros2_control:
     type: git
-    url: git@github.com:soham2560/gz_ros2_control.git
+    url: https://github.com/soham2560/gz_ros2_control.git
     version: port/iron2humble
   rocon_hardware_interfaces:
     type: git
-    url: git@github.com:RRC-Control-Lab/rocon_hardware_interfaces.git
+    url: https://github.com/RRC-Control-Lab/rocon_hardware_interfaces.git
     version: main
   ros2_controllers:
     type: git
-    url: git@github.com:ros-controls/ros2_controllers.git
+    url: https://github.com/ros-controls/ros2_controllers.git
     version: humble
   ld08_driver:
     type: git
-    url: git@github.com:ROBOTIS-GIT/ld08_driver.git
+    url: https://github.com/ROBOTIS-GIT/ld08_driver.git
     version: humble
