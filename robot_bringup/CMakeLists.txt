@@ -20,7 +20,7 @@ find_package(joy REQUIRED)
 find_package(teleop_twist_joy REQUIRED)
 
 install(
-  DIRECTORY config launch urdf rviz
+  DIRECTORY config launch urdf rviz meshes worlds maps
   DESTINATION share/${PROJECT_NAME}
 )
 

@@ -32,7 +32,7 @@ The motor mounts are 3D printed using PLA material with 50% infill for durabilit
 
 ## Control Architecture
 
-The AK60 actuators connect to the Intel NUC through a CAN bus interface, we use a modified version of the [WiCAN Hardware](https://github.com/mittechteam/wican-fw). The system uses ROS2 nodes to:
+The AK60 actuators connect to the Intel NUC through a CAN bus interface,~~we use a modified version of the [WiCAN Hardware](https://github.com/mittechteam/wican-fw)~~ we use the [USB2CAN Module](https://docs.odriverobotics.com/v/latest/hardware/usb-can-datasheet.html) from ODrive. The system uses ROS2 nodes to:
 1. Read encoder data from motors
 2. Calculate odometry
 3. Send velocity commands to individual wheels

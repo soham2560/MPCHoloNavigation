@@ -56,17 +56,25 @@ ROS2 Setup to perform MPC based Holonomic Navigation for Robotics: Planning and 
   ```
 
   Note: Ensure you've run `Import Libs` atleast once (or the equivalent command)
-- **To setup WiCAN** (only if working on hardware)
+- WiCAN Setup (⚠️ **_Deprecated_**: Look at USB2CAN below)
     ```bash
     sudo slcand -o -s8 -t sw -S 3000000 /dev/ttyUSB0 can0
     sudo ifconfig can0 txqueuelen 1000
     sudo ifconfig can0 up
     ```
     Note: You need to change `ttyUSB0` to the WiCAN device
+- **To setup USB2CAN** (only if working on hardware)
+
+    NOTE: This is to be on **host** (NOT in container), it is a one time process and won't have to be repeated again
+    ```bash
+    cd scripts
+    chmod +x usb2can_udev.sh
+    ./usb2can_udev.sh
+    ```
 - **Launch**
 
   ```bash
-  ros2 launch robot_bringup robot_bringup.launch.py use_sim_time:=False
+  ros2 launch robot_bringup robot_bringup.launch.py use_rviz:=True use_slamtoolbox:=True use_nav2:=True use_sim_time:=False use_joy:=True
   ```
   Available arguments are as follows:
 
@@ -77,6 +85,8 @@ ROS2 Setup to perform MPC based Holonomic Navigation for Robotics: Planning and 
   | `record`      | `False`      | Enable recording to a rosbag.                  |
   | `use_rviz`    | `False`      | Launch RViz on startup.                        |
   | `use_joy`    | `False`      | Use joystick control.                        |
+  | `use_slamtoolbox`    | `False`      | Launch SLAM Toolbox on startup                       |
+  | `use_nav2`    | `False`      | Launch Nav2 on startup                     |
 
 - **Interact**
 
@@ -87,3 +97,4 @@ ROS2 Setup to perform MPC based Holonomic Navigation for Robotics: Planning and 
   or make the arg `use_joy:=True` while launching when you have a Joystick Controller connected
 
 Note: The README's in this repository are inspired by [this](https://github.com/TheProjectsGuy/MR21-CS7.503)
+
