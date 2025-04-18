@@ -1,5 +1,5 @@
 /**:
-  joy_node:
+  joy_linux_node:
     ros__parameters:
       device_id: 0
       deadzone: 0.05

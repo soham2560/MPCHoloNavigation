@@ -16,7 +16,7 @@ find_package(rclcpp REQUIRED)
 find_package(rclcpp_components REQUIRED)
 find_package(robot_state_publisher REQUIRED)
 find_package(urdf REQUIRED)
-find_package(joy REQUIRED)
+find_package(joy_linux REQUIRED)
 find_package(teleop_twist_joy REQUIRED)
 
 install(
