@@ -18,7 +18,7 @@
   <exec_depend>rclcpp</exec_depend>
   <exec_depend>robot_state_publisher</exec_depend>
   <exec_depend>xacro</exec_depend>
-  <exec_depend>joy</exec_depend>
+  <exec_depend>joy_linux</exec_depend>
   <exec_depend>teleop_twist_joy</exec_depend>
   <exec_depend>ld08_driver</exec_depend>
 
