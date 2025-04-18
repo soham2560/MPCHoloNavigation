@@ -85,21 +85,8 @@ ROS2 Setup to perform MPC based Holonomic Navigation for Robotics: Planning and 
   | `record`      | `False`      | Enable recording to a rosbag.                  |
   | `use_rviz`    | `False`      | Launch RViz on startup.                        |
   | `use_joy`    | `False`      | Use joystick control.                        |
-
-- **LIDAR Launch**
-```bash
-  ros2 launch ld08_driver ld08.launch.py
-```
-
-- **SLAM-toolbox**
-```bash
-  ros2 launch robot_bringup online_async_launch.py
-```
-
-- **NAV2**
-  ```bash
-  ros2 launch robot_bringup navigation_launch.py
-  ```
+  | `use_slamtoolbox`    | `False`      | Launch SLAM Toolbox on startup                       |
+  | `use_nav2`    | `False`      | Launch Nav2 on startup                     |
 
 - **Interact**
 
