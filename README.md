@@ -88,6 +88,21 @@ ROS2 Setup to perform MPC based Holonomic Navigation for Robotics: Planning and 
   | `use_slamtoolbox`    | `False`      | Launch SLAM Toolbox on startup                       |
   | `use_nav2`    | `False`      | Launch Nav2 on startup                     |
 
+- **LIDAR Launch**
+```bash
+  ros2 launch ld08_driver ld08.launch.py
+```
+
+- **SLAM-toolbox**
+```bash
+  ros2 launch robot_bringup online_async_launch.py
+```
+
+- **NAV2**
+  ```bash
+  ros2 launch robot_bringup navigation_launch.py
+  ```
+
 - **Interact**
 
   To interact with the drive, you can use the `teleop_twist_keyboard` node by launching it as follows
