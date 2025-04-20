@@ -64,7 +64,9 @@
 		"XDG_RUNTIME_DIR": "${localEnv:XDG_RUNTIME_DIR}",
 		"PULSE_SERVER": "${localEnv:PULSE_SERVER}",
         "QT_X11_NO_MITSHM": "1",
-		"LIBGL_ALWAYS_SOFTWARE": "1" // Needed for software rendering of opengl
+		// "LIBGL_ALWAYS_SOFTWARE": "1" , // Needed for software rendering of opengl
+        "NVIDIA_DRIVER_CAPABILITIES": "all",
+        "NVIDIA_VISIBLE_DEVICES": "all"
     },
     "runArgs": [
         // RealTime
@@ -79,7 +81,8 @@
         "--volume=/dev:/dev",
         "--net=host",
         "--ipc=host",
-        "--name=rpn25_mpc_holonomic_navigation_development"
+        "--name=rpn25_mpc_holonomic_navigation_development",
+        "--gpus=all"
     ],
     "postStartCommand": "sudo chown -R container_user /ros2_ws /run"
 }
