@@ -1,0 +1,53 @@
+<class_libraries>
+  <library path="sortham_critics">
+
+    <class type="sortham::critics::ObstaclesCritic" base_class_type="sortham::critics::CriticFunction">
+      <description>sortham critic for obstacle avoidance</description>
+    </class>
+
+    <class type="sortham::critics::CostCritic" base_class_type="sortham::critics::CriticFunction">
+      <description>sortham critic for obstacle avoidance using costmap score</description>
+    </class>
+
+    <class type="sortham::critics::GoalCritic" base_class_type="sortham::critics::CriticFunction">
+      <description>sortham critic for driving towards the goal</description>
+    </class>
+
+    <class type="sortham::critics::GoalAngleCritic" base_class_type="sortham::critics::CriticFunction">
+      <description>sortham critic for achieving the goal heading angle</description>
+    </class>
+
+    <class type="sortham::critics::PathAlignCritic" base_class_type="sortham::critics::CriticFunction">
+      <description>sortham critic for aligning to path</description>
+    </class>
+
+    <class type="sortham::critics::PathAlignLegacyCritic" base_class_type="sortham::critics::CriticFunction">
+      <description>sortham critic for aligning to path (legacy)</description>
+    </class>
+
+    <class type="sortham::critics::PathAngleCritic" base_class_type="sortham::critics::CriticFunction">
+      <description>sortham critic for tracking the path in the correct heading</description>
+    </class>
+
+    <class type="sortham::critics::PathFollowCritic" base_class_type="sortham::critics::CriticFunction">
+      <description>sortham critic for driving towards the goal that is furthest among trajectories nearest path points</description>
+    </class>
+
+    <class type="sortham::critics::PreferForwardCritic" base_class_type="sortham::critics::CriticFunction">
+      <description></description>
+    </class>
+
+    <class type="sortham::critics::TwirlingCritic" base_class_type="sortham::critics::CriticFunction">
+      <description>sortham critic for preventing twirling behavior when using omnidirectional models</description>
+    </class>
+
+    <class type="sortham::critics::ConstraintCritic" base_class_type="sortham::critics::CriticFunction">
+      <description>sortham critic for incentivizing moving within kinematic and dynamic bounds</description>
+    </class>
+
+    <class type="sortham::critics::VelocityDeadbandCritic" base_class_type="sortham::critics::CriticFunction">
+      <description>sortham critic for restricting command velocities in deadband range</description>
+    </class>
+
+  </library>
+</class_libraries>
