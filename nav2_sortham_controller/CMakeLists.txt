@@ -15,9 +15,16 @@ find_package(ament_cmake REQUIRED)
 find_package(xtensor REQUIRED)
 find_package(xsimd REQUIRED)
 
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(IPOPT REQUIRED ipopt)
+
 include_directories(
   include
+  ${IPOPT_INCLUDE_DIRS}
 )
+link_directories(${IPOPT_LIBRARY_DIRS})
+find_path(CASADI_INCLUDE_DIR casadi/casadi.hpp)
+find_library(CASADI_LIBRARY casadi)
 
 set(dependencies_pkgs
   rclcpp
@@ -95,10 +102,24 @@ add_library(sortham_critics SHARED
 set(libraries sortham_controller sortham_critics)
 
 foreach(lib IN LISTS libraries)
-  target_compile_options(${lib} PUBLIC -fconcepts)
-  target_include_directories(${lib} PUBLIC ${xsimd_INCLUDE_DIRS})  #  ${OpenMP_INCLUDE_DIRS}
-  target_link_libraries(${lib} xtensor xtensor::optimize xtensor::use_xsimd)
-  ament_target_dependencies(${lib} ${dependencies_pkgs})
+  target_compile_options(${lib} PUBLIC
+    $<$<CXX_COMPILER_ID:GNU>:--std=c++17>
+    $<$<CXX_COMPILER_ID:Clang>:--std=c++17>
+  )
+  target_include_directories(${lib} PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
+    ${xsimd_INCLUDE_DIRS}
+    ${CASADI_INCLUDE_DIR}
+    )
+  target_link_libraries(${lib}
+    xtensor
+    xtensor::optimize
+    xtensor::use_xsimd
+    ${IPOPT_LIBRARIES}
+    ${CASADI_LIBRARY}
+  )
+ament_target_dependencies(${lib} ${dependencies_pkgs})
 endforeach()
 
 install(TARGETS sortham_controller sortham_critics

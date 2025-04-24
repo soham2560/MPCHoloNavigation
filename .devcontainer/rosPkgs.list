@@ -23,3 +23,13 @@ ros-humble-joy-linux
 iproute2
 can-utils
 net-tools
+gcc
+g++
+gfortran
+git
+patch
+wget
+pkg-config
+liblapack-dev
+libmetis-dev
+coinor-libipopt-dev

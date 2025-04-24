@@ -17,3 +17,11 @@ RUN sudo apt-get update \
    && sudo apt-get autoremove -y \
    && sudo apt-get clean -y \
    && sudo rm -rf /var/lib/apt/lists/*
+
+# Clone, build, and install CasADi 3.7.0
+RUN git clone https://github.com/casadi/casadi.git ~/casadi && \
+   cd ~/casadi && git checkout 3.7.0 && \
+   mkdir build && cd build && \
+   cmake -DWITH_IPOPT=ON .. && \
+   make -j$(nproc) && \
+   sudo make install
