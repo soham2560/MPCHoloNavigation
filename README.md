@@ -87,7 +87,7 @@ ROS2 Setup to perform MPC based Holonomic Navigation for Robotics: Planning and 
   | `use_joy`    | `False`      | Use joystick control.                        |
   | `use_slamtoolbox`    | `False`      | Launch SLAM Toolbox on startup                       |
   | `use_nav2`    | `False`      | Launch Nav2 on startup                     |
-
+Individual Launching (⚠️ **_Deprecated_**: Look at Launch Args of main launch)
 - **LIDAR Launch**
 ```bash
   ros2 launch ld08_driver ld08.launch.py
