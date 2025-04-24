@@ -205,13 +205,33 @@ controller_server:
       az_max: 3.0
       az_min: -3.0
 
+      weight_x: 50.0         # Weight for x position error
+      weight_y: 50.0         # Weight for y position error
+      weight_theta: 10.0     # Weight for orientation (theta) error
+
+      # Control Effort Weights (penalize large control commands)
+      weight_v: 1.0          # Weight for vx command magnitude
+      weight_vy: 1.0         # Weight for vy command magnitude (Omni/Mecanum specific)
+      weight_w: 1.5          # Weight for wz command magnitude
+
+      # Control Rate Weights (penalize large changes in control commands - promotes smoothness)
+      weight_v_accel: 0.5    # Weight for change in vx command
+      weight_vy_accel: 0.5   # Weight for change in vy command (Omni/Mecanum specific)
+      weight_w_accel: 0.8
+      weight_terminal_x: 50.0
+      weight_terminal_y: 50.0
+      weight_terminal_theta: 10.0
+      include_obstacle_constraints: false
+      robot_radius: 0.25         # Approximate radius of the robot (m) for collision checking
+      inflation_radius: 0.10
+
       iteration_count: 1
       prune_distance: 1.7
       transform_tolerance: 0.1
       temperature: 0.3
       gamma: 0.015
       motion_model: "Omni"
-      visualize: false
+      visualize: True
       reset_period: 1.0 # (only in Humble)
       regenerate_noises: false
       TrajectoryVisualizer:

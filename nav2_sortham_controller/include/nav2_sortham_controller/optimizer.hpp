@@ -16,12 +16,15 @@
 #define NAV2_SORTHAM_CONTROLLER__OPTIMIZER_HPP_
 
 #include <string>
+#include <vector>
 #include <memory>
+#include <limits>
 
 #include <xtensor/xtensor.hpp>
 #include <xtensor/xview.hpp>
 
 #include "rclcpp_lifecycle/lifecycle_node.hpp"
+#include "rclcpp/rclcpp.hpp"
 
 #include "nav2_costmap_2d/costmap_2d_ros.hpp"
 #include "nav2_core/goal_checker.hpp"
@@ -40,6 +43,8 @@
 #include "nav2_sortham_controller/tools/noise_generator.hpp"
 #include "nav2_sortham_controller/tools/parameters_handler.hpp"
 #include "nav2_sortham_controller/tools/utils.hpp"
+
+#include <casadi/casadi.hpp>
 
 namespace sortham
 {
@@ -232,6 +237,12 @@ protected:
    */
   bool fallback(bool fail);
 
+
+  void setupCasADiProblem();
+  bool solveMPC();
+  std::vector<geometry_msgs::msg::Pose> getReferencePoseHorizon(
+        const geometry_msgs::msg::Pose& current_robot_pose, int N, double dt);
+
 protected:
   rclcpp_lifecycle::LifecycleNode::WeakPtr parent_;
   std::shared_ptr<nav2_costmap_2d::Costmap2DROS> costmap_ros_;
@@ -260,6 +271,36 @@ protected:
     std::nullopt, std::nullopt};  /// Caution, keep references
 
   rclcpp::Logger logger_{rclcpp::get_logger("SORTHAMController")};
+
+  casadi::Function solver_func_;
+  casadi::MX X_sym_;
+  casadi::MX U_sym_;
+  casadi::MX P_sym_;
+  int n_states_;
+  int n_controls_;
+  int n_params_;
+  int n_opt_vars_;
+  int n_constraints_;
+
+  casadi::DM last_optimal_X_flat_;
+  casadi::DM last_optimal_U_flat_;
+  casadi::DM last_v_ = casadi::DM(0);
+  casadi::DM last_w_ = casadi::DM(0);
+  casadi::DM last_vy_ = casadi::DM(0);
+
+  bool mpc_problem_defined_ = false;
+  bool last_solve_successful_ = false;
+
+  casadi::DM lbx_fixed_;
+  casadi::DM ubx_fixed_;
+  casadi::DM lbg_fixed_;
+  casadi::DM ubg_fixed_;
+
+  std::vector<double> x_flat_lower_bounds_;
+  std::vector<double> x_flat_upper_bounds_;
+  std::vector<double> g_flat_lower_bounds_;
+  std::vector<double> g_flat_upper_bounds_;
+
 };
 
 }  // namespace sortham
