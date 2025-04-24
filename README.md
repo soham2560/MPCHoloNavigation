@@ -87,6 +87,21 @@ ROS2 Setup to perform MPC based Holonomic Navigation for Robotics: Planning and 
   | `use_joy`    | `False`      | Use joystick control.                        |
   | `use_slamtoolbox`    | `False`      | Launch SLAM Toolbox on startup                       |
   | `use_nav2`    | `False`      | Launch Nav2 on startup                     |
+Individual Launching (⚠️ **_Deprecated_**: Look at Launch Args of main launch)
+- **LIDAR Launch**
+```bash
+  ros2 launch ld08_driver ld08.launch.py
+```
+
+- **SLAM-toolbox**
+```bash
+  ros2 launch robot_bringup online_async_launch.py
+```
+
+- **NAV2**
+  ```bash
+  ros2 launch robot_bringup navigation_launch.py
+  ```
 
 - **Interact**
 
@@ -97,4 +112,3 @@ ROS2 Setup to perform MPC based Holonomic Navigation for Robotics: Planning and 
   or make the arg `use_joy:=True` while launching when you have a Joystick Controller connected
 
 Note: The README's in this repository are inspired by [this](https://github.com/TheProjectsGuy/MR21-CS7.503)
-

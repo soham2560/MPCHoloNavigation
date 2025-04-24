@@ -21,6 +21,7 @@
   <exec_depend>joy_linux</exec_depend>
   <exec_depend>teleop_twist_joy</exec_depend>
   <exec_depend>ld08_driver</exec_depend>
+  <exec_depend>nav2_sortham_controller</exec_depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
