@@ -183,6 +183,19 @@ controller_server:
 
     FollowPath:
       plugin: "nav2_sortham_controller::SORTHAMController"
+
+      # --- Lidar Constraint Params ---
+      scan_topic: "scan"                # Topic for LaserScan messages
+      lidar_max_range: 3.0              # Max distance for lidar points (m)
+      lidar_min_range: 0.15             # Min distance for lidar points (m)
+
+      # --- Optimizer Lidar Params ---
+      robot_radius: 0.25                # Robot radius used for collision checking (m)
+      lidar_safety_margin: 0.05         # Additional buffer around obstacles (m)
+      lidar_cluster_tolerance: 0.20     # Max distance between points in a cluster (m)
+      lidar_min_cluster_size: 3         # Minimum points to form a valid obstacle cluster
+      lidar_use_convex_hulls: true      # true=Linear constraints (QP), false=Circular (NLP)
+
       time_steps: 56
       model_dt: 0.05
       batch_size: 2000

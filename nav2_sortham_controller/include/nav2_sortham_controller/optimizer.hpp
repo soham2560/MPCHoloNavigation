@@ -19,6 +19,7 @@
 #include <vector>
 #include <memory>
 #include <limits>
+#include <mutex>
 
 #include <xtensor/xtensor.hpp>
 #include <xtensor/xview.hpp>
@@ -33,6 +34,7 @@
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "geometry_msgs/msg/twist_stamped.hpp"
 #include "nav_msgs/msg/path.hpp"
+#include "geometry_msgs/msg/point.hpp"
 
 #include "nav2_sortham_controller/models/optimizer_settings.hpp"
 #include "nav2_sortham_controller/motion_models.hpp"
@@ -48,6 +50,12 @@
 
 namespace sortham
 {
+struct ClusterInfo {
+  double cx = 0.0;
+  double cy = 0.0;
+  double radius_sq = 0.0; // Store squared radius
+  size_t num_points = 0;
+};
 
 /**
  * @class sortham::Optimizer
@@ -95,7 +103,9 @@ public:
   geometry_msgs::msg::TwistStamped evalControl(
     const geometry_msgs::msg::PoseStamped & robot_pose,
     const geometry_msgs::msg::Twist & robot_speed, const nav_msgs::msg::Path & plan,
-    const geometry_msgs::msg::Pose & goal, nav2_core::GoalChecker * goal_checker);
+    const geometry_msgs::msg::Pose & goal, 
+    const std::vector<geometry_msgs::msg::Point> & obstacle_points,
+    nav2_core::GoalChecker * goal_checker);
 
   /**
    * @brief Get the trajectories generated in a cycle for visualization
@@ -237,13 +247,20 @@ protected:
    */
   bool fallback(bool fail);
 
-
+protected:
   void setupCasADiProblem();
-  bool solveMPC();
+  bool solveMPC(const std::vector<geometry_msgs::msg::Point> & obstacle_points);
   std::vector<geometry_msgs::msg::Pose> getReferencePoseHorizon(
         const geometry_msgs::msg::Pose& current_robot_pose, int N, double dt);
 
-protected:
+  std::vector<ClusterInfo> processObstacles(
+      const std::vector<geometry_msgs::msg::Point>& points);
+  std::vector<std::vector<size_t>> clusterPoints(
+      const std::vector<geometry_msgs::msg::Point>& points);
+  ClusterInfo computeBoundingCircle(
+      const std::vector<geometry_msgs::msg::Point>& cluster_points);
+
+
   rclcpp_lifecycle::LifecycleNode::WeakPtr parent_;
   std::shared_ptr<nav2_costmap_2d::Costmap2DROS> costmap_ros_;
   nav2_costmap_2d::Costmap2D * costmap_;
@@ -272,34 +289,43 @@ protected:
 
   rclcpp::Logger logger_{rclcpp::get_logger("SORTHAMController")};
 
+  // --- CasADi Members ---
   casadi::Function solver_func_;
-  casadi::MX X_sym_;
-  casadi::MX U_sym_;
-  casadi::MX P_sym_;
+  casadi::MX V_sym_; // Combined state and control vector (decision variables)
+  casadi::MX P_sym_; // Parameter vector (initial state, ref traj, obstacles, last ctrl)
   int n_states_;
   int n_controls_;
   int n_params_;
   int n_opt_vars_;
   int n_constraints_;
+  int n_obstacle_params_per_obs_ = 3; // cx, cy, r^2
+  int n_init_state_params_;
+  int n_ref_params_;
+  int n_last_control_params_;
+  int n_obstacle_params_;
 
   casadi::DM last_optimal_X_flat_;
   casadi::DM last_optimal_U_flat_;
-  casadi::DM last_v_ = casadi::DM(0);
-  casadi::DM last_w_ = casadi::DM(0);
-  casadi::DM last_vy_ = casadi::DM(0);
+  casadi::DM last_v_{0.0}; // <<< Initialized >>>
+  casadi::DM last_w_{0.0}; // <<< Initialized >>>
+  casadi::DM last_vy_{0.0}; // <<< Initialized >>>
 
   bool mpc_problem_defined_ = false;
   bool last_solve_successful_ = false;
 
-  casadi::DM lbx_fixed_;
-  casadi::DM ubx_fixed_;
-  casadi::DM lbg_fixed_;
-  casadi::DM ubg_fixed_;
-
+  // --- Precomputed Bounds ---
   std::vector<double> x_flat_lower_bounds_;
   std::vector<double> x_flat_upper_bounds_;
   std::vector<double> g_flat_lower_bounds_;
   std::vector<double> g_flat_upper_bounds_;
+
+  // --- Obstacle Avoidance Parameters ---
+  double robot_radius_{0.25}; // <<< ADDED with default >>>
+  double lidar_safety_margin_{0.05}; // <<< ADDED with default >>>
+  double lidar_cluster_tolerance_{0.2}; // <<< ADDED with default >>>
+  int lidar_min_cluster_size_{3}; // <<< ADDED with default >>>
+  int max_obstacles_{10}; // <<< ADDED with default >>>
+  double effective_radius_padding_sq_{0.0}; // Precompute (radius+margin)^2 
 
 };
 

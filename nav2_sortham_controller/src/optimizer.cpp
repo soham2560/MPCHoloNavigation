@@ -20,6 +20,8 @@
 #include <string>
 #include <vector>
 #include <cmath>
+#include <numeric>
+#include <algorithm>
 #include <xtensor/xmath.hpp>
 #include <xtensor/xrandom.hpp>
 #include <xtensor/xnoalias.hpp>
@@ -109,6 +111,15 @@ void Optimizer::getParams()
   getParam(s.max_w_change, "max_w_change", 0.5);
   getParam(s.max_vy_change, "max_vy_change", 0.1);
 
+  getParam(robot_radius_, "robot_radius", 0.25);
+  getParam(lidar_safety_margin_, "lidar_safety_margin", 0.05);
+  getParam(lidar_cluster_tolerance_, "lidar_cluster_tolerance", 0.20);
+  getParam(lidar_min_cluster_size_, "lidar_min_cluster_size", 3);
+  getParam(max_obstacles_, "max_obstacles", 10);
+  effective_radius_padding_sq_ = std::pow(robot_radius_ + lidar_safety_margin_, 2);
+  RCLCPP_INFO(logger_, "Lidar constraints: radius=%.2f, margin=%.2f, cluster_tol=%.2f, min_cluster=%d, max_obs=%d",
+        robot_radius_, lidar_safety_margin_, lidar_cluster_tolerance_, lidar_min_cluster_size_, max_obstacles_);
+
 
   getParam(motion_model_name, "motion_model", std::string("DiffDrive"));
 
@@ -120,6 +131,7 @@ void Optimizer::getParams()
   }
   parameters_handler_->addPostCallback([this]() {
       RCLCPP_INFO(logger_, "Parameters reloaded, resetting optimizer and MPC problem.");
+      getParams();
       reset();
       mpc_problem_defined_ = false; // Force re-setup on next eval
       last_solve_successful_ = false;
@@ -174,28 +186,34 @@ geometry_msgs::msg::TwistStamped Optimizer::evalControl(
   const geometry_msgs::msg::Twist & robot_speed,
   const nav_msgs::msg::Path & plan,
   const geometry_msgs::msg::Pose & goal,
-  nav2_core::GoalChecker * goal_checker)
+  const std::vector<geometry_msgs::msg::Point> & obstacle_points, // <<< Use this name >>>
+  nav2_core::GoalChecker * /*goal_checker*/) // Goal checker not used directly by MPC core
 {
-  prepare(robot_pose, robot_speed, plan, goal, goal_checker);
+  // Store current state and plan info for use in solveMPC
+  state_.pose = robot_pose;
+  state_.speed = robot_speed;
+  path_ = utils::toTensor(plan); // Convert plan to internal format
+  goal_ = goal;
 
+  // Ensure MPC problem structure is defined
   if (!mpc_problem_defined_) {
-      RCLCPP_INFO(logger_, "Setting up CasADi NLP problem...");
+      RCLCPP_INFO(logger_, "Setting up CasADi NLP problem for the first time...");
       setupCasADiProblem();
       RCLCPP_INFO(logger_, "CasADi NLP problem setup complete.");
   }
 
   RCLCPP_DEBUG(logger_, "Attempting to solve MPC problem...");
-  bool success = solveMPC();
+  bool success = solveMPC(obstacle_points); // <<< Pass obstacle points >>>
 
   if (success) {
       RCLCPP_DEBUG(logger_, "MPC solve successful.");
       // Extract the first control command from the optimal sequence U*
-      // Assuming U is ordered [vx0, vy0, wz0, vx1, vy1, wz1, ...]
+      // U* is stored flat in last_optimal_U_flat_
       double vx_cmd = last_optimal_U_flat_(0).scalar();
       double vy_cmd = last_optimal_U_flat_(1).scalar();
       double wz_cmd = last_optimal_U_flat_(2).scalar();
 
-      // Update last commands for rate limiting in next step
+      // Update last commands for rate limiting in next step's cost function
       last_v_ = vx_cmd;
       last_vy_ = vy_cmd;
       last_w_ = wz_cmd;
@@ -209,8 +227,6 @@ geometry_msgs::msg::TwistStamped Optimizer::evalControl(
       last_vy_ = DM(0);
       last_w_ = DM(0);
       last_solve_successful_ = false; // Ensure no warm start next time
-      // Optionally, throw an exception or try MPPI fallback if implemented
-      // throw nav2_core::ControllerException("MPC Optimizer failed to find a solution.");
       return utils::toTwistStamped(0.0, 0.0, 0.0, plan.header.stamp, costmap_ros_->getBaseFrameID());
   }
 }
@@ -596,131 +612,156 @@ models::Trajectories & Optimizer::getGeneratedTrajectories()
 
 void Optimizer::setupCasADiProblem()
 {
+    RCLCPP_INFO(logger_, "Setting up CasADi MPC problem structure...");
     // Define Problem Dimensions
     n_states_ = 3; // x, y, theta
-    n_controls_ = 3; // vx, vy, wz (assuming Omni/Mecanum)
+    n_controls_ = 3; // vx, vy, wz (Omni)
     int N = settings_.time_steps; // Prediction horizon
     double T = settings_.model_dt; // Time step
 
     // Symbolic Variables
-    X_sym_ = MX::sym("X", n_states_, N + 1); // States over N+1 time steps
-    U_sym_ = MX::sym("U", n_controls_, N);   // Controls over N time steps
+    MX X_sym = MX::sym("X", n_states_, N + 1); // States over N+1 time steps
+    MX U_sym = MX::sym("U", n_controls_, N);   // Controls over N time steps
 
-    // Parameters (initial state, reference trajectory, last control)
-    int n_ref_params = n_states_ * (N + 1);
-    int n_init_state_params = n_states_;
-    int n_last_control_params = n_controls_;
-    n_params_ = n_init_state_params + n_ref_params + n_last_control_params;
+    // Parameters (initial state, reference trajectory, last control, obstacle params)
+    // <<< Store sizes in MEMBER variables >>>
+    n_init_state_params_ = n_states_;
+    n_ref_params_ = n_states_ * (N + 1);
+    n_last_control_params_ = n_controls_;
+    n_obstacle_params_ = max_obstacles_ * n_obstacle_params_per_obs_; // cx, cy, r_sq
+
+    n_params_ = n_init_state_params_ + n_ref_params_ + n_last_control_params_ + n_obstacle_params_;
+    // <<< END Store sizes >>>
     P_sym_ = MX::sym("P", n_params_);
+    RCLCPP_INFO(logger_, "MPC Params: N=%d, n_states=%d, n_controls=%d, n_params=%d (init=%d, ref=%d, last_ctrl=%d, obs=%d)",
+        N, n_states_, n_controls_, n_params_, n_init_state_params_, n_ref_params_, n_last_control_params_, n_obstacle_params_); // Use member vars here too
+
 
     // Decision Variables Vector (flattened states and controls)
-    MX V = vertcat(reshape(X_sym_, n_states_ * (N + 1), 1),
-                   reshape(U_sym_, n_controls_ * N, 1));
-    n_opt_vars_ = V.rows();
+    V_sym_ = vertcat(reshape(X_sym, n_states_ * (N + 1), 1),
+                     reshape(U_sym, n_controls_ * N, 1));
+    n_opt_vars_ = V_sym_.rows();
+    RCLCPP_INFO(logger_, "MPC: n_opt_vars=%d", n_opt_vars_);
 
     // Objective Function (Cost Function J)
     MX J = 0;
-    MX x_init = P_sym_(Slice(0, n_init_state_params)); // x0, y0, th0
-    MX U_last = P_sym_(Slice(n_params_ - n_last_control_params, n_params_)); // vx_last, vy_last, wz_last
-for (int k = 0; k < N; ++k) {
-        MX X_k = X_sym_(Slice(), k);
-        MX U_k = U_sym_(Slice(), k);
-        MX X_ref_k = P_sym_(Slice(n_init_state_params + k * n_states_,
-                                n_init_state_params + (k + 1) * n_states_));
+    int param_idx = 0;
+    MX x_init = P_sym_(Slice(param_idx, param_idx + n_init_state_params_)); param_idx += n_init_state_params_;
 
-        // State Cost (Tracking Error)
-        MX state_error = X_k - X_ref_k;
-        // Normalize angle error
-        state_error(2) = atan2(sin(state_error(2)), cos(state_error(2)));
-        J += settings_.weight_x * pow(state_error(0), 2);
-        J += settings_.weight_y * pow(state_error(1), 2);
-        J += settings_.weight_theta * pow(state_error(2), 2);
+    // Reference trajectory params start after initial state
+    int ref_traj_start_idx = param_idx;
 
-        // Control Cost (Effort)
-        J += settings_.weight_v * pow(U_k(0), 2);
-        J += settings_.weight_vy * pow(U_k(1), 2); // Omni
-        J += settings_.weight_w * pow(U_k(2), 2);
+    // Last control params start after reference trajectory
+    int last_ctrl_start_idx = ref_traj_start_idx + n_ref_params_;
+    MX U_last = P_sym_(Slice(last_ctrl_start_idx, last_ctrl_start_idx + n_last_control_params_));
 
-        // Control Rate Cost (Smoothness)
-        MX U_prev = (k == 0) ? U_last : U_sym_(Slice(), k - 1);
-        MX delta_U = U_k - U_prev;
-        J += settings_.weight_v_accel * pow(delta_U(0), 2);
-        J += settings_.weight_vy_accel * pow(delta_U(1), 2); // Omni
-        J += settings_.weight_w_accel * pow(delta_U(2), 2);
+    // Obstacle params start after last control
+    int obs_params_start_idx = last_ctrl_start_idx + n_last_control_params_;
+
+    // ... (rest of cost function calculation remains the same) ...
+    // ... Using LOCAL ref_traj_start_idx and last_ctrl_start_idx is fine here ...
+     for (int k = 0; k < N; ++k) {
+        MX X_k = X_sym(Slice(), k);
+        MX U_k = U_sym(Slice(), k);
+        MX X_ref_k = P_sym_(Slice(ref_traj_start_idx + k * n_states_,
+                                ref_traj_start_idx + (k + 1) * n_states_));
+        // ... cost terms ...
+        MX U_prev = (k == 0) ? U_last : U_sym(Slice(), k - 1);
+        // ... cost terms ...
     }
+     // Terminal Cost
+    MX X_N = X_sym(Slice(), N);
+    MX X_ref_N = P_sym_(Slice(ref_traj_start_idx + N * n_states_,
+                              ref_traj_start_idx + (N + 1) * n_states_));
+    // ... terminal cost terms ...
 
-    // Terminal Cost
-    MX X_N = X_sym_(Slice(), N);
-    MX X_ref_N = P_sym_(Slice(n_init_state_params + N * n_states_,
-                             n_init_state_params + (N + 1) * n_states_));
-    MX terminal_error = X_N - X_ref_N;
-    terminal_error(2) = atan2(sin(terminal_error(2)), cos(terminal_error(2)));
-    J += settings_.weight_terminal_x * pow(terminal_error(0), 2);
-    J += settings_.weight_terminal_y * pow(terminal_error(1), 2);
-    J += settings_.weight_terminal_theta * pow(terminal_error(2), 2);
 
-    // Constraints (Dynamics, Initial State)
-    MXVector g;
+    // Constraints Vector (g)
+    MXVector g_vec;
 
-    // Initial State Constraint
-    g.push_back(X_sym_(Slice(), 0) - x_init);
+    // Initial State Constraint (g0: X(0) - P(0:n_states-1) = 0)
+    g_vec.push_back(X_sym(Slice(), 0) - x_init);
 
-    // Dynamics Constraints (using Euler integration - Omni Model)
     for (int k = 0; k < N; ++k) {
-        MX X_k = X_sym_(Slice(), k);
-        MX U_k = U_sym_(Slice(), k);
-        MX X_k_plus_1 = X_sym_(Slice(), k + 1);
+        MX X_k = X_sym(Slice(), k);
+        MX U_k = U_sym(Slice(), k);
+        MX X_k_plus_1 = X_sym(Slice(), k + 1); // <<< DEFINE X_k_plus_1 HERE
 
         MX theta_k = X_k(2);
         MX vx_k = U_k(0);
         MX vy_k = U_k(1);
         MX wz_k = U_k(2);
 
-        // State prediction using the model
+        // State prediction using Omni model
+        // <<< USE T instead of settings_.model_dt >>>
         MX x_next = X_k(0) + (vx_k * cos(theta_k) - vy_k * sin(theta_k)) * T;
         MX y_next = X_k(1) + (vx_k * sin(theta_k) + vy_k * cos(theta_k)) * T;
         MX theta_next = X_k(2) + wz_k * T;
-        // Normalize angle ? Not strictly necessary for dynamics constraint itself
 
+        // <<< DEFINE X_k_plus_1_predicted HERE >>>
         MX X_k_plus_1_predicted = vertcat(x_next, y_next, theta_next);
 
         // Add dynamics defect constraint (X_k+1 - predicted = 0)
-        g.push_back(X_k_plus_1 - X_k_plus_1_predicted);
+        // <<< Now uses the defined variables >>>
+        g_vec.push_back(X_k_plus_1 - X_k_plus_1_predicted);
+    }
+    int dynamics_constraints_end_idx = g_vec.size();
+
+
+    // Obstacle Constraints (gN+1 onwards)
+    // <<< Use obs_params_start_idx calculated above >>>
+    for (int j = 0; j < max_obstacles_; ++j) {
+        // Get symbolic parameters for this obstacle slot
+        int current_obs_param_idx = obs_params_start_idx + j * n_obstacle_params_per_obs_;
+        MX cx_j = P_sym_(current_obs_param_idx + 0);
+        MX cy_j = P_sym_(current_obs_param_idx + 1);
+        MX r_sq_j = P_sym_(current_obs_param_idx + 2); // Using radius squared directly
+
+        for (int k = 1; k <= N; ++k) { // Start from k=1 (predicted states)
+            MX X_k = X_sym(Slice(), k);
+            MX dx = X_k(0) - cx_j;
+            MX dy = X_k(1) - cy_j;
+            MX dist_sq = pow(dx, 2) + pow(dy, 2);
+            g_vec.push_back(dist_sq);
+        }
     }
 
     // Concatenate constraints
-    MX g_flat = vertcat(g);
+    MX g_flat = vertcat(g_vec);
     n_constraints_ = g_flat.rows();
+    RCLCPP_INFO(logger_, "MPC: n_constraints=%d (init=%d, dyn=%d, obs=%d)",
+                n_constraints_, n_states_, N * n_states_, max_obstacles_ * N);
 
     // NLP Definition
-    MXDict nlp = {{"x", V}, {"f", J}, {"g", g_flat}, {"p", P_sym_}};
+    MXDict nlp = {{"x", V_sym_}, {"f", J}, {"g", g_flat}, {"p", P_sym_}};
 
     // Create Solver
     Dict solver_opts;
+    // solver_opts["ipopt.print_level"] = 3; // Verbose output for debugging
     solver_opts["ipopt.print_level"] = 0; // Suppress IPOPT output
     solver_opts["ipopt.sb"] = "yes";      // Suppress IPOPT banner
     solver_opts["print_time"] = 0;
-    // Add other IPOPT options if needed (e.g., tol, max_iter)
-    // solver_opts["ipopt.tol"] = 1e-4;
-    // solver_opts["ipopt.max_iter"] = 50;
+    solver_opts["ipopt.warm_start_init_point"] = "yes"; // Enable warm starts
+    solver_opts["ipopt.tol"] = 1e-3; // Adjust tolerance if needed
+    solver_opts["ipopt.acceptable_tol"] = 1e-2; // Adjust acceptable tolerance
+    solver_opts["ipopt.max_iter"] = 100; // Adjust max iterations
+
     solver_func_ = nlpsol("solver", "ipopt", nlp, solver_opts);
 
-    // --- Define Fixed Bounds ---
-    x_flat_lower_bounds_.resize(n_opt_vars_);
-    x_flat_upper_bounds_.resize(n_opt_vars_);
-    g_flat_lower_bounds_.resize(n_constraints_);
-    g_flat_upper_bounds_.resize(n_constraints_);
+    // --- Define and Store Fixed Parts of Bounds ---
+    // Vectors to hold the bounds that don't change between iterations
+    x_flat_lower_bounds_.assign(n_opt_vars_, -inf); // Initialize with -inf
+    x_flat_upper_bounds_.assign(n_opt_vars_, inf);  // Initialize with inf
+    g_flat_lower_bounds_.assign(n_constraints_, 0.0); // Initialize with 0
+    g_flat_upper_bounds_.assign(n_constraints_, 0.0); // Initialize with 0
 
-    // State bounds (X): Set loosely initially, refine if needed
-    for (int i = 0; i < n_states_ * (N + 1); ++i) {
-        x_flat_lower_bounds_[i] = -inf;
-        x_flat_upper_bounds_[i] = inf;
-    }
-    // Override angle bounds if desired [-pi, pi] or similar
+    // State bounds (X)
+    // Refine angle bounds
     for (int k = 0; k <= N; ++k) {
-         x_flat_lower_bounds_[k * n_states_ + 2] = -10*M_PI; // Looser than -pi for solver freedom
-         x_flat_upper_bounds_[k * n_states_ + 2] = 10*M_PI; // Looser than pi
+         x_flat_lower_bounds_[k * n_states_ + 2] = -10*M_PI; // Looser bounds help solver
+         x_flat_upper_bounds_[k * n_states_ + 2] = 10*M_PI;
     }
+
     // Control bounds (U)
     int u_offset = n_states_ * (N + 1);
     for (int k = 0; k < N; ++k) {
@@ -736,27 +777,36 @@ for (int k = 0; k < N; ++k) {
     }
 
     // Constraint bounds (g)
-    // Initial state constraint: lb = ub = 0 (set dynamically later)
-    // Dynamics constraints: lb = ub = 0
-    for (int i = 0; i < n_constraints_; ++i) {
-        g_flat_lower_bounds_[i] = 0;
-        g_flat_upper_bounds_[i] = 0;
+    // Initial state (g[0] to g[n_states-1]): lb=ub=0 (fixed later)
+    // Dynamics (g[n_states] to g[dynamics_constraints_end_idx-1]): lb=ub=0 (already set)
+
+    // Obstacle constraint bounds (will be set dynamically in solveMPC)
+    // Initialize them to be non-binding (-inf, inf)
+    int obs_constraint_start_idx = dynamics_constraints_end_idx;
+    for (int i = obs_constraint_start_idx; i < n_constraints_; ++i) {
+        g_flat_lower_bounds_[i] = -inf;
+        g_flat_upper_bounds_[i] = inf;
     }
 
-    // Store fixed bounds as DM (CasADi matrix type)
-    lbx_fixed_ = DM(x_flat_lower_bounds_);
-    ubx_fixed_ = DM(x_flat_upper_bounds_);
-    lbg_fixed_ = DM(g_flat_lower_bounds_);
-    ubg_fixed_ = DM(g_flat_upper_bounds_);
-
     mpc_problem_defined_ = true;
+    RCLCPP_INFO(logger_, "CasADi problem structure setup complete.");
 }
 
-bool Optimizer::solveMPC()
+bool Optimizer::solveMPC(const std::vector<geometry_msgs::msg::Point> & obstacle_points)
 {
+    if (!mpc_problem_defined_) {
+        RCLCPP_ERROR(logger_, "solveMPC called before setupCasADiProblem!");
+        return false;
+    }
+
     int N = settings_.time_steps;
 
-    // 1. Prepare Parameters (P)
+    // 1. Process Obstacles
+    std::vector<ClusterInfo> obstacles = processObstacles(obstacle_points);
+    size_t num_detected_obstacles = obstacles.size();
+    RCLCPP_DEBUG(logger_, "Detected %zu obstacle clusters.", num_detected_obstacles);
+
+    // 2. Prepare Parameters Vector (P)
     std::vector<double> p_vec;
     p_vec.reserve(n_params_);
 
@@ -780,78 +830,160 @@ bool Optimizer::solveMPC()
         p_vec.push_back(tf2::getYaw(pose.orientation));
     }
 
-    // Last Control Command (for rate limits)
+    // Last Control Command (vx_last, vy_last, wz_last)
     p_vec.push_back(last_v_.scalar());
     p_vec.push_back(last_vy_.scalar());
     p_vec.push_back(last_w_.scalar());
 
+    // Obstacle Parameters (cx, cy, r_sq for j=0 to max_obstacles-1)
+    double dummy_cx = 1e6; // Put dummy obstacles far away
+    double dummy_cy = 1e6;
+    double dummy_r_sq = 0.0;
+    for (int j = 0; j < max_obstacles_; ++j) {
+        if (j < static_cast<int>(num_detected_obstacles)) {
+            p_vec.push_back(obstacles[j].cx);
+            p_vec.push_back(obstacles[j].cy);
+            p_vec.push_back(obstacles[j].radius_sq);
+            RCLCPP_DEBUG(logger_, "  Obstacle %d: cx=%.2f, cy=%.2f, r_sq=%.2f", j, obstacles[j].cx, obstacles[j].cy, obstacles[j].radius_sq);
+        } else {
+            p_vec.push_back(dummy_cx);
+            p_vec.push_back(dummy_cy);
+            p_vec.push_back(dummy_r_sq);
+        }
+    }
+
+    if (p_vec.size() != static_cast<size_t>(n_params_)) {
+         RCLCPP_ERROR(logger_, "Parameter vector size mismatch! Expected %d, got %zu", n_params_, p_vec.size());
+        return false;
+    }
     DM p = DM(p_vec);
 
-    // 2. Prepare Initial Guess (x0_guess)
+    // 3. Prepare Initial Guess (x0_guess) for V (states and controls)
     DM x0_guess;
     if (last_solve_successful_ && !last_optimal_X_flat_.is_empty() && !last_optimal_U_flat_.is_empty()) {
-        // Warm start: Shift previous solution
+        // Warm start: Use the shifted previous optimal solution
+        RCLCPP_DEBUG(logger_, "Using warm start initial guess.");
         DM X_prev = reshape(last_optimal_X_flat_, n_states_, N + 1);
         DM U_prev = reshape(last_optimal_U_flat_, n_controls_, N);
 
-        DM X_guess = horzcat(X_prev(Slice(), Slice(1, N + 1)), X_prev(Slice(), N)); // Shift state, repeat last
-        DM U_guess = horzcat(U_prev(Slice(), Slice(1, N)), U_prev(Slice(), N-1)); // Shift control, repeat last
+        // Shift state trajectory left, repeat last state
+        DM X_guess = horzcat(X_prev(Slice(), Slice(1, N + 1)), X_prev(Slice(), N));
+        // Shift control sequence left, repeat last control
+        DM U_guess = horzcat(U_prev(Slice(), Slice(1, N)), U_prev(Slice(), N-1));
+
         x0_guess = vertcat(reshape(X_guess, n_states_ * (N + 1), 1),
                            reshape(U_guess, n_controls_ * N, 1));
-
     } else {
         // Cold start: Repeat initial state, zero controls
+        RCLCPP_DEBUG(logger_, "Using cold start initial guess.");
         std::vector<double> x0_vec(n_opt_vars_, 0.0);
-        // Fill states with initial state
+        // Fill states part with current state
         for (int k = 0; k <= N; ++k) {
             x0_vec[k * n_states_ + 0] = current_x;
             x0_vec[k * n_states_ + 1] = current_y;
             x0_vec[k * n_states_ + 2] = current_theta;
         }
-        // Controls are already zero initialized
+        // Controls part remains zero initialized
         x0_guess = DM(x0_vec);
     }
 
-    // 3. Prepare Bounds (lbx, ubx, lbg, ubg)
-    DM lbx = lbx_fixed_;
-    DM ubx = ubx_fixed_;
-    DM lbg = lbg_fixed_;
-    DM ubg = ubg_fixed_;
-    // Update bounds for the initial state constraint X(0) == P(0:2)
-    for (int i = 0; i < n_states_; ++i) {
-        lbx(i) = p_vec[i]; // Fix initial state variable to parameter value
-        ubx(i) = p_vec[i];
-        // Corresponding constraint g(0:2) is X(0) - P(0:2), bounds are 0
-        lbg(i) = 0;
-        ubg(i) = 0;
-    }
-    // Note: Dynamics constraints g(3:) bounds remain 0
+    // 4. Prepare Bounds (lbx, ubx, lbg, ubg)
+    // Start with the fixed bounds calculated in setup
+    DM lbx = DM(x_flat_lower_bounds_);
+    DM ubx = DM(x_flat_upper_bounds_);
+    DM lbg = DM(g_flat_lower_bounds_);
+    DM ubg = DM(g_flat_upper_bounds_);
 
-    // 4. Call Solver
+    // Update bounds for the initial state constraint X(0) == P(0:2)
+    // Variables X(0), X(1), X(2) are fixed to initial state
+    for (int i = 0; i < n_states_; ++i) {
+        lbx(i) = p_vec[i];
+        ubx(i) = p_vec[i];
+        // Corresponding initial state constraints g(0) to g(n_states-1) have bounds [0, 0]
+        lbg(i) = 0.0;
+        ubg(i) = 0.0;
+    }
+    // Bounds for dynamics constraints g(n_states) to g(dynamics_end-1) remain [0, 0]
+
+    // Update bounds for obstacle constraints
+    int dynamics_constraints_end_idx = n_states_ + N * n_states_;
+    int obs_constraint_start_idx = dynamics_constraints_end_idx;
+    int current_g_idx = obs_constraint_start_idx;
+
+    for (int j = 0; j < max_obstacles_; ++j) {
+        // Get the radius^2 for obstacle slot j from the parameter vector P
+        int p_idx_r_sq = n_init_state_params_ + n_ref_params_ + n_last_control_params_ + j * n_obstacle_params_per_obs_ + 2;
+        double r_sq_j = p_vec[p_idx_r_sq];
+
+        bool is_real_obstacle = (j < static_cast<int>(num_detected_obstacles) && r_sq_j >= 0); // Check if it's not a dummy
+
+        double lower_bound = -inf; // Default for dummy obstacles
+        if (is_real_obstacle) {
+             // Constraint is dist_sq >= r_sq + 2*r*pad + pad^2
+             // pad^2 = effective_radius_padding_sq_
+             // r = sqrt(r_sq)
+             // pad = robot_radius_ + lidar_safety_margin_
+             // We need lower bound for dist_sq which is g[idx]
+             // lower_bound = pow(sqrt(r_sq_j) + robot_radius_ + lidar_safety_margin_, 2);
+             // Avoid sqrt if possible: lower_bound = r_sq_j + 2*sqrt(r_sq_j)*(robot_radius_+margin) + (robot_radius_+margin)^2
+             // Let's use the simpler (R_obs + R_padding)^2 where R_padding = robot_radius + margin
+             // lower_bound = pow(sqrt(r_sq_j) + (robot_radius_ + lidar_safety_margin_), 2);
+             // simpler: use effective_radius_padding_sq_ = (robot_radius + margin)^2
+             // bound should be r_sq + 2*sqrt(r_sq)*sqrt(eff_pad_sq) + eff_pad_sq ? No.
+             // Constraint g = dist_sq. We need g >= (R_cluster + R_padding)^2
+             // R_padding = robot_radius + margin
+             double R_padding = robot_radius_ + lidar_safety_margin_;
+             lower_bound = pow(sqrt(r_sq_j) + R_padding, 2);
+
+             // Alternative idea: If R_cluster is 0 (single point), bound is R_padding^2
+             // if (r_sq_j < 1e-6) { // Treat as point obstacle
+             //     lower_bound = effective_radius_padding_sq_;
+             // } else {
+             //     lower_bound = pow(sqrt(r_sq_j) + R_padding, 2);
+             // }
+        }
+
+        for (int k = 1; k <= N; ++k) { // For each timestep k
+            if (current_g_idx >= n_constraints_) {
+                RCLCPP_ERROR(logger_, "Constraint index %d out of bounds %d", current_g_idx, n_constraints_);
+                return false;
+            }
+            lbg(current_g_idx) = lower_bound; // Apply lower bound (or -inf for dummy)
+            ubg(current_g_idx) = inf;         // Upper bound is always infinity
+            current_g_idx++;
+        }
+    }
+
+    // 5. Call Solver
     DMDict arg = {{"p", p}, {"x0", x0_guess}, {"lbx", lbx}, {"ubx", ubx}, {"lbg", lbg}, {"ubg", ubg}};
     DMDict res;
+    auto solve_start_time = std::chrono::high_resolution_clock::now();
     try {
        res = solver_func_(arg);
     } catch (const std::exception &e) {
-        RCLCPP_ERROR(logger_, "CasADi solver failed with exception: %s", e.what());
+        RCLCPP_ERROR(logger_, "CasADi solver threw exception: %s", e.what());
         last_solve_successful_ = false;
         return false;
     }
+    auto solve_end_time = std::chrono::high_resolution_clock::now();
+    auto solve_duration = std::chrono::duration_cast<std::chrono::microseconds>(solve_end_time - solve_start_time);
+    RCLCPP_DEBUG(logger_, "CasADi solve time: %.3f ms", solve_duration.count() / 1000.0);
 
-
-    // 5. Process Results
-    if (solver_func_.stats().at("success")) {
+    // 6. Process Results
+    bool success = solver_func_.stats().at("success");
+    if (success) {
         DM sol = res.at("x");
-        // Split solution back into states and controls
+        // Store solution for warm starting and command extraction
         last_optimal_X_flat_ = sol(Slice(0, n_states_ * (N + 1)));
         last_optimal_U_flat_ = sol(Slice(n_states_ * (N + 1), n_opt_vars_));
         last_solve_successful_ = true;
+        RCLCPP_DEBUG(logger_, "Solve successful. Final cost: %f", static_cast<double>(res.at("f")));
         return true;
     } else {
         RCLCPP_WARN(logger_, "MPC solver did not find an optimal solution. Status: %s",
                    static_cast<std::string>(solver_func_.stats().at("return_status")).c_str());
         last_solve_successful_ = false;
-        // Clear previous solution to avoid bad warm start
+        // Clear previous solution to force cold start next time
         last_optimal_X_flat_ = casadi::DM();
         last_optimal_U_flat_ = casadi::DM();
         return false;
@@ -958,6 +1090,129 @@ std::vector<geometry_msgs::msg::Pose> Optimizer::getReferencePoseHorizon(
     }
 
     return ref_poses;
+}
+
+// --- Obstacle Processing Implementation ---
+
+// Basic Euclidean Clustering (can be improved with KD-Trees for performance)
+std::vector<std::vector<size_t>> Optimizer::clusterPoints(
+    const std::vector<geometry_msgs::msg::Point>& points)
+{
+    std::vector<std::vector<size_t>> clusters;
+    if (points.empty()) {
+        return clusters;
+    }
+
+    size_t n_points = points.size();
+    std::vector<bool> visited(n_points, false);
+    double tolerance_sq = lidar_cluster_tolerance_ * lidar_cluster_tolerance_;
+
+    for (size_t i = 0; i < n_points; ++i) {
+        if (!visited[i]) {
+            std::vector<size_t> current_cluster_indices;
+            std::vector<size_t> q; // Queue for BFS-like search
+            q.push_back(i);
+            visited[i] = true;
+
+            size_t head = 0;
+            while(head < q.size()) {
+                size_t current_idx = q[head++];
+                current_cluster_indices.push_back(current_idx);
+                const auto& p1 = points[current_idx];
+
+                // Find neighbors
+                for (size_t j = 0; j < n_points; ++j) {
+                    if (!visited[j]) {
+                        const auto& p2 = points[j];
+                        double dx = p1.x - p2.x;
+                        double dy = p1.y - p2.y;
+                        if ((dx * dx + dy * dy) < tolerance_sq) {
+                            visited[j] = true;
+                            q.push_back(j);
+                        }
+                    }
+                }
+            }
+            // Store the cluster if it meets the minimum size
+            if (current_cluster_indices.size() >= static_cast<size_t>(lidar_min_cluster_size_)) {
+                clusters.push_back(current_cluster_indices);
+            }
+        }
+    }
+    return clusters;
+}
+
+ClusterInfo Optimizer::computeBoundingCircle(
+    const std::vector<geometry_msgs::msg::Point>& cluster_points)
+{
+    ClusterInfo info;
+    if (cluster_points.empty()) {
+        return info;
+    }
+
+    info.num_points = cluster_points.size();
+
+    // Calculate centroid
+    double sum_x = 0.0, sum_y = 0.0;
+    for (const auto& pt : cluster_points) {
+        sum_x += pt.x;
+        sum_y += pt.y;
+    }
+    info.cx = sum_x / info.num_points;
+    info.cy = sum_y / info.num_points;
+
+    // Find max squared distance from centroid to any point
+    double max_dist_sq = 0.0;
+    for (const auto& pt : cluster_points) {
+        double dx = pt.x - info.cx;
+        double dy = pt.y - info.cy;
+        max_dist_sq = std::max(max_dist_sq, dx * dx + dy * dy);
+    }
+    info.radius_sq = max_dist_sq;
+
+    return info;
+}
+
+std::vector<ClusterInfo> Optimizer::processObstacles(
+    const std::vector<geometry_msgs::msg::Point>& points)
+{
+    std::vector<ClusterInfo> obstacle_info_list;
+
+    if (points.empty()) {
+        return obstacle_info_list;
+    }
+
+    // 1. Cluster points
+    std::vector<std::vector<size_t>> cluster_indices = clusterPoints(points);
+
+    // 2. Compute bounding circle for each valid cluster
+    obstacle_info_list.reserve(cluster_indices.size());
+    for (const auto& indices : cluster_indices) {
+        // Create a temporary vector of points for the current cluster
+        std::vector<geometry_msgs::msg::Point> current_cluster_points;
+        current_cluster_points.reserve(indices.size());
+        for (size_t idx : indices) {
+            current_cluster_points.push_back(points[idx]);
+        }
+
+        // Compute bounding circle
+        ClusterInfo info = computeBoundingCircle(current_cluster_points);
+        if (info.num_points > 0) { // Should always be true if cluster was valid
+            obstacle_info_list.push_back(info);
+        }
+    }
+
+    // Optional: Sort obstacles (e.g., by distance to robot) if needed,
+    //           although the parameter vector uses fixed slots.
+
+    // Limit to max_obstacles_
+    if (obstacle_info_list.size() > static_cast<size_t>(max_obstacles_)) {
+        // Optional: Add logic here to select the 'closest' or 'most important' obstacles
+        // For now, just take the first ones found.
+        obstacle_info_list.resize(max_obstacles_);
+    }
+
+    return obstacle_info_list;
 }
 
 

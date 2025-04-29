@@ -16,6 +16,8 @@
 #include <string>
 
 #include "gtest/gtest.h"
+#include "geometry_msgs/msg/point.hpp"
+#include "geometry_msgs/msg/pose.hpp"
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <geometry_msgs/msg/twist.hpp>
 #include <nav_msgs/msg/path.hpp>
@@ -86,10 +88,13 @@ void prepareAndRunBenchmark(
   auto pose = getDummyPointStamped(node, start_pose);
   auto velocity = getDummyTwist();
   auto path = getIncrementalDummyPath(node, path_settings);
+  auto goal = path.poses.back().pose;
   nav2_core::GoalChecker * dummy_goal_checker{nullptr};
+  std::vector<geometry_msgs::msg::Point> dummy_obstacle_points;
+  
 
   for (auto _ : state) {
-    optimizer->evalControl(pose, velocity, path, dummy_goal_checker);
+    optimizer->evalControl(pose, velocity, path, goal, dummy_obstacle_points, dummy_goal_checker);
   }
 }
 

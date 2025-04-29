@@ -17,6 +17,11 @@
 
 #include <string>
 #include <memory>
+#include <vector>
+#include <mutex>
+
+#include "sensor_msgs/msg/laser_scan.hpp"
+#include "geometry_msgs/msg/point.hpp"
 
 #include "nav2_sortham_controller/tools/path_handler.hpp"
 #include "nav2_sortham_controller/optimizer.hpp"
@@ -27,6 +32,8 @@
 #include "nav2_core/controller.hpp"
 #include "nav2_core/goal_checker.hpp"
 #include "rclcpp/rclcpp.hpp"
+#include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
+#include "tf2/utils.h"
 
 namespace nav2_sortham_controller
 {
@@ -107,6 +114,11 @@ protected:
     * @param transformed_plan Transformed input plan
     */
   void visualize(nav_msgs::msg::Path transformed_plan);
+  /**
+    * @brief Callback for the laser scan subscriber
+    * @param msg Received LaserScan message
+    */
+  void laserScanCallback(const sensor_msgs::msg::LaserScan::SharedPtr msg);
 
   std::string name_;
   rclcpp_lifecycle::LifecycleNode::WeakPtr parent_;
@@ -119,6 +131,14 @@ protected:
   Optimizer optimizer_;
   PathHandler path_handler_;
   TrajectoryVisualizer trajectory_visualizer_;
+
+  rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
+  std::string scan_topic_;
+  std::vector<geometry_msgs::msg::Point> obstacle_points_;
+  std::mutex obstacle_points_mutex_;
+  double lidar_max_range_{3.5};
+  double lidar_min_range_{0.1};
+  std::string robot_base_frame_;
 
   bool visualize_;
 
