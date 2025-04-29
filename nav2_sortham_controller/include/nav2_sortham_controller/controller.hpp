@@ -28,6 +28,9 @@
 #include "nav2_sortham_controller/tools/trajectory_visualizer.hpp"
 #include "nav2_sortham_controller/models/constraints.hpp"
 #include "nav2_sortham_controller/tools/utils.hpp"
+#include "visualization_msgs/msg/marker_array.hpp"
+#include "std_msgs/msg/color_rgba.hpp"
+#include "nav2_sortham_controller/optimizer.hpp"
 
 #include "nav2_core/controller.hpp"
 #include "nav2_core/goal_checker.hpp"
@@ -140,11 +143,19 @@ protected:
   double lidar_min_range_{0.1};
   std::string robot_base_frame_;
 
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr obstacle_marker_pub_;
+
   bool visualize_;
 
   double reset_period_;
   // Last time computeVelocityCommands was called
   rclcpp::Time last_time_called_;
+
+  std_msgs::msg::ColorRGBA createColor(float r, float g, float b, float a) {
+      std_msgs::msg::ColorRGBA color;
+      color.r = r; color.g = g; color.b = b; color.a = a;
+      return color;
+  }
 };
 
 }  // namespace nav2_sortham_controller

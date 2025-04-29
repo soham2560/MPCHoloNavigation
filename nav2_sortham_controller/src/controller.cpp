@@ -15,11 +15,16 @@
 #include <stdint.h>
 #include <chrono>
 #include "nav2_sortham_controller/controller.hpp"
+#include "nav2_sortham_controller/optimizer.hpp"
+#include "visualization_msgs/msg/marker_array.hpp"
+#include "visualization_msgs/msg/marker.hpp"
 #include "nav2_sortham_controller/tools/utils.hpp"
+
 
 #include "sensor_msgs/msg/laser_scan.hpp"
 #include "tf2_ros/transform_listener.h"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
+#include "visualization_msgs/msg/marker_array.hpp"
 #include "tf2/utils.h"
 #include <cmath>
 
@@ -47,8 +52,8 @@ void SORTHAMController::configure(
   getParam(visualize_, "visualize", false);
   getParam(reset_period_, "reset_period", 1.0);
   getParam(scan_topic_, "scan_topic", std::string("scan"));
-  getParam(lidar_max_range_, "lidar_max_range", 3.5);
-  getParam(lidar_min_range_, "lidar_min_range", 0.1);
+  getParam(lidar_max_range_, "lidar_max_range", 2.0);
+  getParam(lidar_min_range_, "lidar_min_range", 0.5);
   robot_base_frame_ = costmap_ros_->getBaseFrameID();
 
   // Configure composed objects
@@ -62,6 +67,9 @@ void SORTHAMController::configure(
     rclcpp::SensorDataQoS(),
     std::bind(&SORTHAMController::laserScanCallback, this, std::placeholders::_1));
 
+  obstacle_marker_pub_ = node->create_publisher<visualization_msgs::msg::MarkerArray>(
+    "~/processed_obstacles", 1);
+
   RCLCPP_INFO(logger_, "Configured SORTHAM Controller: %s", name_.c_str());
 }
 
@@ -71,6 +79,7 @@ void SORTHAMController::cleanup()
   trajectory_visualizer_.on_cleanup();
   parameters_handler_.reset();
   scan_sub_.reset();
+  obstacle_marker_pub_.reset();
   RCLCPP_INFO(logger_, "Cleaned up SORTHAM Controller: %s", name_.c_str());
 }
 
@@ -139,9 +148,132 @@ geometry_msgs::msg::TwistStamped SORTHAMController::computeVelocityCommands(
 
 void SORTHAMController::visualize(nav_msgs::msg::Path transformed_plan)
 {
-  trajectory_visualizer_.add(optimizer_.getGeneratedTrajectories(), "Candidate Trajectories");
+  // --- Visualize Optimal Trajectory using TrajectoryVisualizer (Existing) ---
   trajectory_visualizer_.add(optimizer_.getOptimizedTrajectory(), "Optimal Trajectory");
-  trajectory_visualizer_.visualize(std::move(transformed_plan));
+  trajectory_visualizer_.visualize(std::move(transformed_plan)); // Publishes traj + plan
+
+  // --- Visualize Processed Obstacles Directly (New) ---
+  const auto& obstacles_info = optimizer_.getLastProcessedObstacles();
+  double robot_radius = optimizer_.getRobotRadius();
+  double safety_margin = optimizer_.getLidarSafetyMargin();
+
+  // Only publish if there are subscribers and obstacles
+  if (obstacle_marker_pub_->get_subscription_count() > 0 && !obstacles_info.empty())
+  {
+      visualization_msgs::msg::MarkerArray marker_array_msg;
+      auto now = clock_->now();
+      int marker_id = 0; // Unique IDs within this array for this cycle
+      double avoidance_padding = robot_radius + safety_margin;
+
+      // --- Marker for Deleting Old Markers (Optional but good practice) ---
+      visualization_msgs::msg::Marker clear_marker;
+      clear_marker.header.frame_id = robot_base_frame_; // Use controller's base frame
+      clear_marker.header.stamp = now;
+      clear_marker.id = marker_id++; // Assign an ID
+      clear_marker.action = visualization_msgs::msg::Marker::DELETEALL;
+      // Add delete markers for all namespaces we are about to publish
+      clear_marker.ns = "obstacle_centers"; marker_array_msg.markers.push_back(clear_marker);
+      clear_marker.ns = "obstacle_radii"; marker_array_msg.markers.push_back(clear_marker);
+      clear_marker.ns = "obstacle_padding"; marker_array_msg.markers.push_back(clear_marker);
+      clear_marker.ns = "raw_lidar_points"; marker_array_msg.markers.push_back(clear_marker); // If visualizing raw points
+
+      // --- Create Markers for Each Obstacle ---
+      for (const auto& obs : obstacles_info)
+      {
+          if (obs.num_points == 0 || obs.radius_sq < 0) continue;
+
+          double radius = (obs.radius_sq > 1e-9) ? std::sqrt(obs.radius_sq) : 0.0;
+          double avoidance_radius = radius + avoidance_padding;
+
+          // 1. Center Sphere
+          visualization_msgs::msg::Marker center_marker;
+          center_marker.header.frame_id = robot_base_frame_;
+          center_marker.header.stamp = now;
+          center_marker.ns = "obstacle_centers";
+          center_marker.id = marker_id++;
+          center_marker.type = visualization_msgs::msg::Marker::SPHERE;
+          center_marker.action = visualization_msgs::msg::Marker::ADD;
+          center_marker.pose.position.x = obs.cx;
+          center_marker.pose.position.y = obs.cy;
+          center_marker.pose.position.z = 0.1;
+          center_marker.pose.orientation.w = 1.0;
+          center_marker.scale = utils::createScale(0.1, 0.1, 0.1);
+          center_marker.color = createColor(1.0f, 0.0f, 0.0f, 0.8f); // Red center
+          center_marker.lifetime = rclcpp::Duration(1, 0);
+          marker_array_msg.markers.push_back(center_marker);
+
+          // 2. Radius Cylinder
+          visualization_msgs::msg::Marker radius_marker;
+          radius_marker.header.frame_id = robot_base_frame_;
+          radius_marker.header.stamp = now;
+          radius_marker.ns = "obstacle_radii";
+          radius_marker.id = marker_id++;
+          radius_marker.type = visualization_msgs::msg::Marker::CYLINDER;
+          radius_marker.action = visualization_msgs::msg::Marker::ADD;
+          radius_marker.pose.position.x = obs.cx;
+          radius_marker.pose.position.y = obs.cy;
+          radius_marker.pose.position.z = 0.05;
+          radius_marker.pose.orientation.w = 1.0;
+          radius_marker.scale = utils::createScale(radius * 2.0, radius * 2.0, 0.02);
+          radius_marker.color = createColor(1.0f, 1.0f, 0.0f, 0.5f); // Yellow radius
+          radius_marker.lifetime = rclcpp::Duration(1, 0);
+          marker_array_msg.markers.push_back(radius_marker);
+
+          // 3. Padding Cylinder
+          visualization_msgs::msg::Marker padding_marker;
+          padding_marker.header.frame_id = robot_base_frame_;
+          padding_marker.header.stamp = now;
+          padding_marker.ns = "obstacle_padding";
+          padding_marker.id = marker_id++;
+          padding_marker.type = visualization_msgs::msg::Marker::CYLINDER;
+          padding_marker.action = visualization_msgs::msg::Marker::ADD;
+          padding_marker.pose.position.x = obs.cx;
+          padding_marker.pose.position.y = obs.cy;
+          padding_marker.pose.position.z = 0.02;
+          padding_marker.pose.orientation.w = 1.0;
+          padding_marker.scale = utils::createScale(avoidance_radius * 2.0, avoidance_radius * 2.0, 0.01);
+          padding_marker.color = createColor(1.0f, 0.5f, 0.0f, 0.3f); // Orange padding
+          padding_marker.lifetime = rclcpp::Duration(1, 0);
+          marker_array_msg.markers.push_back(padding_marker);
+      }
+
+      // --- Visualize Raw Lidar Points (Optional) ---
+      std::vector<geometry_msgs::msg::Point> current_obstacle_points_for_viz;
+      {
+          std::lock_guard<std::mutex> lock(obstacle_points_mutex_);
+          current_obstacle_points_for_viz = obstacle_points_;
+      }
+      if (!current_obstacle_points_for_viz.empty()) {
+          visualization_msgs::msg::Marker points_marker;
+          points_marker.header.frame_id = robot_base_frame_;
+          points_marker.header.stamp = now;
+          points_marker.ns = "raw_lidar_points";
+          points_marker.id = marker_id++;
+          points_marker.type = visualization_msgs::msg::Marker::POINTS;
+          points_marker.action = visualization_msgs::msg::Marker::ADD;
+          points_marker.pose.orientation.w = 1.0;
+          points_marker.scale = utils::createScale(0.02, 0.02, 0.02); // Point size
+          points_marker.color = createColor(1.0f, 0.0f, 1.0f, 1.0f); // Magenta points
+          points_marker.lifetime = rclcpp::Duration(1, 0);
+          points_marker.points = current_obstacle_points_for_viz; // Assign points
+          marker_array_msg.markers.push_back(points_marker);
+      }
+
+      // Publish the marker array for obstacles and points
+      obstacle_marker_pub_->publish(marker_array_msg);
+  }
+  else if (obstacle_marker_pub_->get_subscription_count() > 0) {
+      // Publish a clear marker if there are no obstacles but subscribers exist
+      // to clear previous visualizations
+      visualization_msgs::msg::MarkerArray clear_array;
+      visualization_msgs::msg::Marker clear_marker;
+      clear_marker.header.frame_id = robot_base_frame_;
+      clear_marker.header.stamp = clock_->now();
+      clear_marker.id = 0; // Single ID for deleteall
+      clear_marker.action = visualization_msgs::msg::Marker::DELETEALL;
+      clear_array.markers.push_back(clear_marker);
+      obstacle_marker_pub_->publish(clear_array);
+  }
 }
 
 void SORTHAMController::setPlan(const nav_msgs::msg::Path & path)
@@ -156,52 +288,79 @@ void SORTHAMController::setSpeedLimit(const double & speed_limit, const bool & p
 
 void SORTHAMController::laserScanCallback(const sensor_msgs::msg::LaserScan::SharedPtr msg)
 {
-  // 1. Get transform from laser frame to robot base frame at the time of the scan
   geometry_msgs::msg::TransformStamped laser_to_base_transform;
   try {
     laser_to_base_transform = tf_buffer_->lookupTransform(
       robot_base_frame_, msg->header.frame_id,
-      msg->header.stamp, rclcpp::Duration::from_seconds(0.1)); // Small tolerance
+      msg->header.stamp, rclcpp::Duration::from_seconds(0.1));
   } catch (const tf2::TransformException & ex) {
     RCLCPP_WARN_THROTTLE(
-       logger_, *clock_, 1000, "Could not transform %s to %s: %s",
+       logger_, *clock_, 1000, "Could not transform laser scan from %s to %s: %s",
        msg->header.frame_id.c_str(), robot_base_frame_.c_str(), ex.what());
     return;
   }
 
-  // 2. Process scan points
-  std::vector<geometry_msgs::msg::Point> current_points;
-  current_points.reserve(msg->ranges.size());
+  nav2_costmap_2d::Costmap2D* costmap = costmap_ros_->getCostmap();
+  if (!costmap) {
+       RCLCPP_WARN_THROTTLE(logger_, *clock_, 1000, "Local costmap pointer is null, cannot filter points.");
+       return;
+  }
+  double origin_x = costmap->getOriginX();
+  double origin_y = costmap->getOriginY();
+  double size_x_meters = costmap->getSizeInMetersX();
+  double size_y_meters = costmap->getSizeInMetersY();
+  std::string costmap_frame = costmap_ros_->getGlobalFrameID();
+
+  geometry_msgs::msg::TransformStamped base_to_costmap_transform;
+  try {
+      base_to_costmap_transform = tf_buffer_->lookupTransform(
+          costmap_frame, robot_base_frame_,
+          msg->header.stamp, rclcpp::Duration::from_seconds(0.1));
+  } catch (const tf2::TransformException & ex) {
+      RCLCPP_WARN_THROTTLE(
+         logger_, *clock_, 1000, "Could not get transform from %s to %s needed for filtering: %s",
+         robot_base_frame_.c_str(), costmap_frame.c_str(), ex.what());
+      return;
+  }
+
+  std::vector<geometry_msgs::msg::Point> filtered_points;
+  filtered_points.reserve(msg->ranges.size());
 
   for (size_t i = 0; i < msg->ranges.size(); ++i) {
     float range = msg->ranges[i];
 
-    // Filter out invalid points (NaN, Inf) and points outside desired range
     if (std::isnan(range) || std::isinf(range) ||
         range < lidar_min_range_ || range > lidar_max_range_)
     {
       continue;
     }
 
-    // Convert polar to Cartesian in laser frame
     float angle = msg->angle_min + i * msg->angle_increment;
     geometry_msgs::msg::Point point_laser_frame;
     point_laser_frame.x = range * std::cos(angle);
     point_laser_frame.y = range * std::sin(angle);
-    point_laser_frame.z = 0.0; // Assuming 2D lidar on a plane
+    point_laser_frame.z = 0.0;
 
-    // Transform point to base frame
     geometry_msgs::msg::Point point_base_frame;
     tf2::doTransform(point_laser_frame, point_base_frame, laser_to_base_transform);
 
-    current_points.push_back(point_base_frame);
+    geometry_msgs::msg::Point point_costmap_frame;
+    tf2::doTransform(point_base_frame, point_costmap_frame, base_to_costmap_transform);
+
+    bool in_bounds = (point_costmap_frame.x >= origin_x &&
+                      point_costmap_frame.x < (origin_x + size_x_meters) &&
+                      point_costmap_frame.y >= origin_y &&
+                      point_costmap_frame.y < (origin_y + size_y_meters));
+
+    if (in_bounds) {
+        filtered_points.push_back(point_base_frame);
+    }
   }
 
-  // 3. Store the processed points (thread-safe)
   {
     std::lock_guard<std::mutex> lock(obstacle_points_mutex_);
-    obstacle_points_ = std::move(current_points);
-    RCLCPP_INFO_THROTTLE(logger_, *clock_, 2000, "Processed %zu obstacle points", obstacle_points_.size());
+    obstacle_points_ = std::move(filtered_points);
+    RCLCPP_DEBUG_THROTTLE(logger_, *clock_, 2000, "Processed %zu obstacle points within local costmap", obstacle_points_.size());
   }
 }
 

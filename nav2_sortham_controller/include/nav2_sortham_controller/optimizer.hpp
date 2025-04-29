@@ -22,7 +22,6 @@
 #include <mutex>
 
 #include <xtensor/xtensor.hpp>
-#include <xtensor/xview.hpp>
 
 #include "rclcpp_lifecycle/lifecycle_node.hpp"
 #include "rclcpp/rclcpp.hpp"
@@ -38,11 +37,7 @@
 
 #include "nav2_sortham_controller/models/optimizer_settings.hpp"
 #include "nav2_sortham_controller/motion_models.hpp"
-#include "nav2_sortham_controller/critic_manager.hpp"
-#include "nav2_sortham_controller/models/state.hpp"
-#include "nav2_sortham_controller/models/trajectories.hpp"
 #include "nav2_sortham_controller/models/path.hpp"
-#include "nav2_sortham_controller/tools/noise_generator.hpp"
 #include "nav2_sortham_controller/tools/parameters_handler.hpp"
 #include "nav2_sortham_controller/tools/utils.hpp"
 
@@ -53,8 +48,13 @@ namespace sortham
 struct ClusterInfo {
   double cx = 0.0;
   double cy = 0.0;
-  double radius_sq = 0.0; // Store squared radius
+  double radius_sq = 0.0;
   size_t num_points = 0;
+};
+
+struct MpcCurrentState {
+    geometry_msgs::msg::PoseStamped pose;
+    geometry_msgs::msg::Twist speed;
 };
 
 /**
@@ -68,12 +68,6 @@ public:
     * @brief Constructor for sortham::Optimizer
     */
   Optimizer() = default;
-
-  /**
-   * @brief Destructor for sortham::Optimizer
-   */
-  ~Optimizer() {shutdown();}
-
 
   /**
    * @brief Initializes optimizer on startup
@@ -103,15 +97,9 @@ public:
   geometry_msgs::msg::TwistStamped evalControl(
     const geometry_msgs::msg::PoseStamped & robot_pose,
     const geometry_msgs::msg::Twist & robot_speed, const nav_msgs::msg::Path & plan,
-    const geometry_msgs::msg::Pose & goal, 
+    const geometry_msgs::msg::Pose & goal,
     const std::vector<geometry_msgs::msg::Point> & obstacle_points,
     nav2_core::GoalChecker * goal_checker);
-
-  /**
-   * @brief Get the trajectories generated in a cycle for visualization
-   * @return Set of trajectories evaluated in cycle
-   */
-  models::Trajectories & getGeneratedTrajectories();
 
   /**
    * @brief Get the optimal trajectory for a cycle for visualization
@@ -131,168 +119,56 @@ public:
    */
   void reset();
 
-protected:
   /**
-   * @brief Main function to generate, score, and return trajectories
+   * @brief Get last processed obstacles
    */
-  void optimize();
-
-  /**
-   * @brief Prepare state information on new request for trajectory rollouts
-   * @param robot_pose Pose of the robot at given time
-   * @param robot_speed Speed of the robot at given time
-   * @param plan Path plan to track
-   * @param goal_checker Object to check if goal is completed
-   */
-  void prepare(
-    const geometry_msgs::msg::PoseStamped & robot_pose,
-    const geometry_msgs::msg::Twist & robot_speed,
-    const nav_msgs::msg::Path & plan,
-    const geometry_msgs::msg::Pose & goal, nav2_core::GoalChecker * goal_checker);
-
-  /**
-   * @brief Obtain the main controller's parameters
-   */
-  void getParams();
-
-  /**
-   * @brief Set the motion model of the vehicle platform
-   * @param model Model string to use
-   */
-  void setMotionModel(const std::string & model);
-
-  /**
-   * @brief Shift the optimal control sequence after processing for
-   * next iterations initial conditions after execution
-   */
-  void shiftControlSequence();
-
-  /**
-   * @brief updates generated trajectories with noised trajectories
-   * from the last cycle's optimal control
-   */
-  void generateNoisedTrajectories();
-
-  /**
-   * @brief Apply hard vehicle constraints on control sequence
-   */
-  void applyControlSequenceConstraints();
-
-  /**
-   * @brief  Update velocities in state
-   * @param state fill state with velocities on each step
-   */
-  void updateStateVelocities(models::State & state) const;
-
-  /**
-   * @brief  Update initial velocity in state
-   * @param state fill state
-   */
-  void updateInitialStateVelocities(models::State & state) const;
-
-  /**
-   * @brief predict velocities in state using model
-   * for time horizon equal to timesteps
-   * @param state fill state
-   */
-  void propagateStateVelocitiesFromInitials(models::State & state) const;
-
-  /**
-   * @brief Rollout velocities in state to poses
-   * @param trajectories to rollout
-   * @param state fill state
-   */
-  void integrateStateVelocities(
-    models::Trajectories & trajectories,
-    const models::State & state) const;
-
-  /**
-   * @brief Rollout velocities in state to poses
-   * @param trajectories to rollout
-   * @param state fill state
-   */
-  void integrateStateVelocities(
-    xt::xtensor<float, 2> & trajectories,
-    const xt::xtensor<float, 2> & state) const;
-
-  /**
-   * @brief Update control sequence with state controls weighted by costs
-   * using softmax function
-   */
-  void updateControlSequence();
-
-  /**
-   * @brief Convert control sequence to a twist commant
-   * @param stamp Timestamp to use
-   * @return TwistStamped of command to send to robot base
-   */
-  geometry_msgs::msg::TwistStamped
-  getControlFromSequenceAsTwist(const builtin_interfaces::msg::Time & stamp);
-
-  /**
-   * @brief Whether the motion model is holonomic
-   * @return Bool if holonomic to populate `y` axis of state
-   */
-  bool isHolonomic() const;
-
-  /**
-   * @brief Using control frequence and time step size, determine if trajectory
-   * offset should be used to populate initial state of the next cycle
-   */
-  void setOffset(double controller_frequency);
-
-  /**
-   * @brief Perform fallback behavior to try to recover from a set of trajectories in collision
-   * @param fail Whether the system failed to recover from
-   */
-  bool fallback(bool fail);
+  const std::vector<ClusterInfo>& getLastProcessedObstacles() const;
+  double getRobotRadius() const { return robot_radius_; }
+  double getLidarSafetyMargin() const { return lidar_safety_margin_; }
 
 protected:
+  rclcpp::Clock::SharedPtr clock_;
+  // --- Core MPC Methods ---
   void setupCasADiProblem();
   bool solveMPC(const std::vector<geometry_msgs::msg::Point> & obstacle_points);
   std::vector<geometry_msgs::msg::Pose> getReferencePoseHorizon(
         const geometry_msgs::msg::Pose& current_robot_pose, int N, double dt);
 
+  // --- Obstacle Processing Helpers ---
   std::vector<ClusterInfo> processObstacles(
       const std::vector<geometry_msgs::msg::Point>& points);
   std::vector<std::vector<size_t>> clusterPoints(
       const std::vector<geometry_msgs::msg::Point>& points);
   ClusterInfo computeBoundingCircle(
       const std::vector<geometry_msgs::msg::Point>& cluster_points);
+  std::vector<ClusterInfo> last_processed_obstacles_;
 
+  // --- Utility Methods ---
+  void getParams();
+  void setMotionModel(const std::string & model);
+  bool isHolonomic() const;
 
+  // --- Core Members ---
   rclcpp_lifecycle::LifecycleNode::WeakPtr parent_;
   std::shared_ptr<nav2_costmap_2d::Costmap2DROS> costmap_ros_;
-  nav2_costmap_2d::Costmap2D * costmap_;
+  nav2_costmap_2d::Costmap2D * costmap_{nullptr};
   std::string name_;
+  ParametersHandler * parameters_handler_{nullptr};
+  rclcpp::Logger logger_{rclcpp::get_logger("SORTHAMOptimizer")};
 
+  // --- Settings ---
+  models::OptimizerSettings settings_;
   std::shared_ptr<MotionModel> motion_model_;
 
-  ParametersHandler * parameters_handler_;
-  CriticManager critic_manager_;
-  NoiseGenerator noise_generator_;
-
-  models::OptimizerSettings settings_;
-
-  models::State state_;
-  models::ControlSequence control_sequence_;
-  std::array<sortham::models::Control, 4> control_history_;
-  models::Trajectories generated_trajectories_;
+  // --- State/Plan Info used by MPC ---
+  MpcCurrentState current_state_;
   models::Path path_;
   geometry_msgs::msg::Pose goal_;
-  xt::xtensor<float, 1> costs_;
-
-  CriticData critics_data_ = {
-    state_, generated_trajectories_, path_, goal_,
-    costs_, settings_.model_dt, false, nullptr, nullptr,
-    std::nullopt, std::nullopt};  /// Caution, keep references
-
-  rclcpp::Logger logger_{rclcpp::get_logger("SORTHAMController")};
 
   // --- CasADi Members ---
   casadi::Function solver_func_;
   casadi::MX V_sym_; // Combined state and control vector (decision variables)
-  casadi::MX P_sym_; // Parameter vector (initial state, ref traj, obstacles, last ctrl)
+  casadi::MX P_sym_; // Parameter vector
   int n_states_;
   int n_controls_;
   int n_params_;
@@ -303,12 +179,17 @@ protected:
   int n_ref_params_;
   int n_last_control_params_;
   int n_obstacle_params_;
+  int n_dyn_lin_params_;
+  int n_obs_lin_params_;
 
   casadi::DM last_optimal_X_flat_;
   casadi::DM last_optimal_U_flat_;
-  casadi::DM last_v_{0.0}; // <<< Initialized >>>
-  casadi::DM last_w_{0.0}; // <<< Initialized >>>
-  casadi::DM last_vy_{0.0}; // <<< Initialized >>>
+  casadi::DM last_v_{0.0};
+  casadi::DM last_w_{0.0};
+  casadi::DM last_vy_{0.0};
+  casadi::Function dyn_func_;
+  casadi::Function dyn_jac_x_func_;
+  casadi::Function dyn_jac_u_func_;
 
   bool mpc_problem_defined_ = false;
   bool last_solve_successful_ = false;
@@ -320,13 +201,12 @@ protected:
   std::vector<double> g_flat_upper_bounds_;
 
   // --- Obstacle Avoidance Parameters ---
-  double robot_radius_{0.25}; // <<< ADDED with default >>>
-  double lidar_safety_margin_{0.05}; // <<< ADDED with default >>>
-  double lidar_cluster_tolerance_{0.2}; // <<< ADDED with default >>>
-  int lidar_min_cluster_size_{3}; // <<< ADDED with default >>>
-  int max_obstacles_{10}; // <<< ADDED with default >>>
-  double effective_radius_padding_sq_{0.0}; // Precompute (radius+margin)^2 
-
+  double robot_radius_{0.25};
+  double lidar_safety_margin_{0.05};
+  double lidar_cluster_tolerance_{0.2};
+  int lidar_min_cluster_size_{3};
+  int max_obstacles_{10};
+  double effective_radius_padding_sq_{0.0};
 };
 
 }  // namespace sortham
