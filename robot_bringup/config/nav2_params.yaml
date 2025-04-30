@@ -187,9 +187,9 @@ controller_server:
       model_dt: 0.05
       batch_size: 2000
 
-      vx_std: 0.2
-      vy_std: 0.2
-      wz_std: 0.2
+      vx_std: 0.5
+      vy_std: 0.5
+      wz_std: 0.5
       
       vx_max: 0.5
       vx_min: -0.5
@@ -211,7 +211,7 @@ controller_server:
       temperature: 0.3
       gamma: 0.015
       motion_model: "Omni"
-      visualize: false
+      visualize: True
       reset_period: 1.0 # (only in Humble)
       regenerate_noises: false
       TrajectoryVisualizer:
