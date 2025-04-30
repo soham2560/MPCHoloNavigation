@@ -359,39 +359,94 @@ xt::xtensor<float, 2> Optimizer::getOptimizedTrajectory()
   return std::move(trajectories);
 }
 
+// void Optimizer::updateControlSequence()
+// {
+//   auto & s = settings_;
+//   auto bounded_noises_vx = state_.cvx - control_sequence_.vx;
+//   auto bounded_noises_wz = state_.cwz - control_sequence_.wz;
+//   xt::noalias(costs_) +=
+//     s.gamma / powf(s.sampling_std.vx, 2) * xt::sum(
+//     xt::view(control_sequence_.vx, xt::newaxis(), xt::all()) * bounded_noises_vx, 1, immediate);
+//   xt::noalias(costs_) +=
+//     s.gamma / powf(s.sampling_std.wz, 2) * xt::sum(
+//     xt::view(control_sequence_.wz, xt::newaxis(), xt::all()) * bounded_noises_wz, 1, immediate);
+
+//   if (isHolonomic()) {
+//     auto bounded_noises_vy = state_.cvy - control_sequence_.vy;
+//     xt::noalias(costs_) +=
+//       s.gamma / powf(s.sampling_std.vy, 2) * xt::sum(
+//       xt::view(control_sequence_.vy, xt::newaxis(), xt::all()) * bounded_noises_vy,
+//       1, immediate);
+//   }
+
+//   auto && costs_normalized = costs_ - xt::amin(costs_, immediate);
+//   auto && exponents = xt::eval(xt::exp(-1 / settings_.temperature * costs_normalized));
+//   auto && softmaxes = xt::eval(exponents / xt::sum(exponents, immediate));
+//   auto && softmaxes_extened = xt::eval(xt::view(softmaxes, xt::all(), xt::newaxis()));
+
+//   xt::noalias(control_sequence_.vx) = xt::sum(state_.cvx * softmaxes_extened, 0, immediate);
+//   xt::noalias(control_sequence_.wz) = xt::sum(state_.cwz * softmaxes_extened, 0, immediate);
+//   if (isHolonomic()) {
+//     xt::noalias(control_sequence_.vy) = xt::sum(state_.cvy * softmaxes_extened, 0, immediate);
+//   }
+
+//   applyControlSequenceConstraints();
+// }
+
 void Optimizer::updateControlSequence()
 {
-  auto & s = settings_;
-  auto bounded_noises_vx = state_.cvx - control_sequence_.vx;
-  auto bounded_noises_wz = state_.cwz - control_sequence_.wz;
-  xt::noalias(costs_) +=
-    s.gamma / powf(s.sampling_std.vx, 2) * xt::sum(
-    xt::view(control_sequence_.vx, xt::newaxis(), xt::all()) * bounded_noises_vx, 1, immediate);
-  xt::noalias(costs_) +=
-    s.gamma / powf(s.sampling_std.wz, 2) * xt::sum(
-    xt::view(control_sequence_.wz, xt::newaxis(), xt::all()) * bounded_noises_wz, 1, immediate);
+  // Number of elite samples and total samples
+  const size_t K = 10;
+  const size_t N = 100;
 
+  // Pair costs with indices
+  std::vector<size_t> idx(N);
+  std::iota(idx.begin(), idx.end(), 0);
+  // Partition to get top-K lowest costs
+  std::nth_element(idx.begin(), idx.begin() + K, idx.end(),
+    [&](size_t a, size_t b) { return costs_(a) < costs_(b); });
+  idx.resize(K);
+
+  // --- Compute new mean and variance for each control channel ---
+  
+  // vx channel
+  auto elite_vx = xt::view(state_.cvx, xt::keep(idx), xt::all());  // shape (K, H)
+  auto mean_vx  = xt::sum(elite_vx, 0) / static_cast<float>(K);
+  auto diff_vx  = elite_vx - xt::view(mean_vx, xt::newaxis(), xt::all());
+  auto var_vx   = xt::sum(diff_vx * diff_vx, 0) / static_cast<float>(K);
+  
+  // Update control mean
+  xt::noalias(control_sequence_.vx) = mean_vx;
+  // Compute scalar variance (average over horizon)
+  float var_vx_scalar = xt::sum(var_vx)() / static_cast<float>(var_vx.size());
+  settings_.sampling_std.vx = std::sqrt(var_vx_scalar);
+
+  // wz channel
+  auto elite_wz = xt::view(state_.cwz, xt::keep(idx), xt::all());
+  auto mean_wz  = xt::sum(elite_wz, 0) / static_cast<float>(K);
+  auto diff_wz  = elite_wz - xt::view(mean_wz, xt::newaxis(), xt::all());
+  auto var_wz   = xt::sum(diff_wz * diff_wz, 0) / static_cast<float>(K);
+  
+  xt::noalias(control_sequence_.wz) = mean_wz;
+  float var_wz_scalar = xt::sum(var_wz)() / static_cast<float>(var_wz.size());
+  settings_.sampling_std.wz = std::sqrt(var_wz_scalar);
+
+  // vy channel for holonomic cases
   if (isHolonomic()) {
-    auto bounded_noises_vy = state_.cvy - control_sequence_.vy;
-    xt::noalias(costs_) +=
-      s.gamma / powf(s.sampling_std.vy, 2) * xt::sum(
-      xt::view(control_sequence_.vy, xt::newaxis(), xt::all()) * bounded_noises_vy,
-      1, immediate);
+    auto elite_vy = xt::view(state_.cvy, xt::keep(idx), xt::all());
+    auto mean_vy  = xt::sum(elite_vy, 0) / static_cast<float>(K);
+    auto diff_vy  = elite_vy - xt::view(mean_vy, xt::newaxis(), xt::all());
+    auto var_vy   = xt::sum(diff_vy * diff_vy, 0) / static_cast<float>(K);
+    
+    xt::noalias(control_sequence_.vy) = mean_vy;
+    float var_vy_scalar = xt::sum(var_vy)() / static_cast<float>(var_vy.size());
+    settings_.sampling_std.vy = std::sqrt(var_vy_scalar);
   }
 
-  auto && costs_normalized = costs_ - xt::amin(costs_, immediate);
-  auto && exponents = xt::eval(xt::exp(-1 / settings_.temperature * costs_normalized));
-  auto && softmaxes = xt::eval(exponents / xt::sum(exponents, immediate));
-  auto && softmaxes_extened = xt::eval(xt::view(softmaxes, xt::all(), xt::newaxis()));
-
-  xt::noalias(control_sequence_.vx) = xt::sum(state_.cvx * softmaxes_extened, 0, immediate);
-  xt::noalias(control_sequence_.wz) = xt::sum(state_.cwz * softmaxes_extened, 0, immediate);
-  if (isHolonomic()) {
-    xt::noalias(control_sequence_.vy) = xt::sum(state_.cvy * softmaxes_extened, 0, immediate);
-  }
-
+  // Enforce any control constraints
   applyControlSequenceConstraints();
 }
+
 
 geometry_msgs::msg::TwistStamped Optimizer::getControlFromSequenceAsTwist(
   const builtin_interfaces::msg::Time & stamp)
