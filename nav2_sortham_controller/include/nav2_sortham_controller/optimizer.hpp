@@ -15,198 +15,243 @@
 #ifndef NAV2_SORTHAM_CONTROLLER__OPTIMIZER_HPP_
 #define NAV2_SORTHAM_CONTROLLER__OPTIMIZER_HPP_
 
+// C++ Standard Library
 #include <string>
 #include <vector>
 #include <memory>
 #include <limits>
 #include <mutex>
+#include <optional>
 
+// Third-Party
 #include <xtensor/xtensor.hpp>
+#include <casadi/casadi.hpp>
 
-#include "rclcpp_lifecycle/lifecycle_node.hpp"
+// ROS 2
 #include "rclcpp/rclcpp.hpp"
+#include "rclcpp_lifecycle/lifecycle_node.hpp"
 
-#include "nav2_costmap_2d/costmap_2d_ros.hpp"
-#include "nav2_core/goal_checker.hpp"
-
+// ROS 2 Messages
 #include "geometry_msgs/msg/twist.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "geometry_msgs/msg/twist_stamped.hpp"
-#include "nav_msgs/msg/path.hpp"
 #include "geometry_msgs/msg/point.hpp"
+#include "nav_msgs/msg/path.hpp"
 
+// Navigation Stack
+#include "nav2_costmap_2d/costmap_2d_ros.hpp"
+#include "nav2_core/goal_checker.hpp"
+
+// SORTHAM Controller
 #include "nav2_sortham_controller/models/optimizer_settings.hpp"
 #include "nav2_sortham_controller/motion_models.hpp"
 #include "nav2_sortham_controller/models/path.hpp"
 #include "nav2_sortham_controller/tools/parameters_handler.hpp"
 #include "nav2_sortham_controller/tools/utils.hpp"
 
-#include <casadi/casadi.hpp>
-
 namespace sortham
 {
-struct ClusterInfo {
+
+// ============================================================================
+// Supporting Data Structures
+// ============================================================================
+
+struct ClusterInfo
+{
   double cx = 0.0;
   double cy = 0.0;
   double radius_sq = 0.0;
   size_t num_points = 0;
 };
 
-struct MpcCurrentState {
-    geometry_msgs::msg::PoseStamped pose;
-    geometry_msgs::msg::Twist speed;
+struct MpcCurrentState
+{
+  geometry_msgs::msg::PoseStamped pose;
+  geometry_msgs::msg::Twist speed;
 };
 
-/**
- * @class sortham::Optimizer
- * @brief Main algorithm optimizer of the SORTHAM Controller
- */
+// ============================================================================
+// Optimizer Class Declaration
+// ============================================================================
+
 class Optimizer
 {
 public:
-  /**
-    * @brief Constructor for sortham::Optimizer
-    */
+  // --------------------
+  // Public Methods
+  // --------------------
   Optimizer() = default;
 
-  /**
-   * @brief Initializes optimizer on startup
-   * @param parent WeakPtr to node
-   * @param name Name of plugin
-   * @param costmap_ros Costmap2DROS object of environment
-   * @param dynamic_parameter_handler Parameter handler object
-   */
   void initialize(
-    rclcpp_lifecycle::LifecycleNode::WeakPtr parent, const std::string & name,
+    rclcpp_lifecycle::LifecycleNode::WeakPtr parent,
+    const std::string & name,
     std::shared_ptr<nav2_costmap_2d::Costmap2DROS> costmap_ros,
     ParametersHandler * dynamic_parameters_handler);
 
-  /**
-   * @brief Shutdown for optimizer at process end
-   */
   void shutdown();
 
-  /**
-   * @brief Compute control using SORTHAM algorithm
-   * @param robot_pose Pose of the robot at given time
-   * @param robot_speed Speed of the robot at given time
-   * @param plan Path plan to track
-   * @param goal_checker Object to check if goal is completed
-   * @return TwistStamped of the SORTHAM control
-   */
   geometry_msgs::msg::TwistStamped evalControl(
     const geometry_msgs::msg::PoseStamped & robot_pose,
-    const geometry_msgs::msg::Twist & robot_speed, const nav_msgs::msg::Path & plan,
+    const geometry_msgs::msg::Twist & robot_speed,
+    const nav_msgs::msg::Path & plan,
     const geometry_msgs::msg::Pose & goal,
     const std::vector<geometry_msgs::msg::Point> & obstacle_points,
     nav2_core::GoalChecker * goal_checker);
 
-  /**
-   * @brief Get the optimal trajectory for a cycle for visualization
-   * @return Optimal trajectory
-   */
   xt::xtensor<float, 2> getOptimizedTrajectory();
 
-  /**
-   * @brief Set the maximum speed based on the speed limits callback
-   * @param speed_limit Limit of the speed for use
-   * @param percentage Whether the speed limit is absolute or relative
-   */
   void setSpeedLimit(double speed_limit, bool percentage);
 
-  /**
-   * @brief Reset the optimization problem to initial conditions
-   */
   void reset();
 
-  /**
-   * @brief Get last processed obstacles
-   */
   const std::vector<ClusterInfo>& getLastProcessedObstacles() const;
+
   double getRobotRadius() const { return robot_radius_; }
+
   double getLidarSafetyMargin() const { return lidar_safety_margin_; }
 
+  std::optional<geometry_msgs::msg::Pose> getLastLocalTarget() const;
+
+  void generateMilestones(const nav_msgs::msg::Path & path);
+
+  geometry_msgs::msg::Pose selectCurrentMilestoneTarget();
+
+  double calculatePathCurvature(const nav_msgs::msg::Path& path, size_t index);
+
+  const std::vector<geometry_msgs::msg::Pose>& getCurrentMilestones() const
+  {
+    return current_milestones_;
+  }
+
+  size_t getCurrentMilestoneIndex() const
+  {
+    return current_milestone_idx_;
+  }
+
 protected:
-  rclcpp::Clock::SharedPtr clock_;
-  // --- Core MPC Methods ---
+  // --------------------
+  // MPC and Optimization Logic
+  // --------------------
   void setupCasADiProblem();
   bool solveMPC(const std::vector<geometry_msgs::msg::Point> & obstacle_points);
-  std::vector<geometry_msgs::msg::Pose> getReferencePoseHorizon(
-        const geometry_msgs::msg::Pose& current_robot_pose, int N, double dt);
+  
+  // --------------------
+  // Obstacle Processing
+  // --------------------
+  std::vector<ClusterInfo> processObstacles(const std::vector<geometry_msgs::msg::Point>& points);
+  std::vector<std::vector<size_t>> clusterPoints(const std::vector<geometry_msgs::msg::Point>& points);
+  std::vector<std::vector<geometry_msgs::msg::Point>> clusterPointsInternal(
+    const std::vector<geometry_msgs::msg::Point>& points_to_cluster,
+    double tolerance, int min_size);
+  ClusterInfo computeBoundingCircle(const std::vector<geometry_msgs::msg::Point>& cluster_points);
 
-  // --- Obstacle Processing Helpers ---
-  std::vector<ClusterInfo> processObstacles(
-      const std::vector<geometry_msgs::msg::Point>& points);
-  std::vector<std::vector<size_t>> clusterPoints(
-      const std::vector<geometry_msgs::msg::Point>& points);
-  ClusterInfo computeBoundingCircle(
-      const std::vector<geometry_msgs::msg::Point>& cluster_points);
-  std::vector<ClusterInfo> last_processed_obstacles_;
+  // --------------------
+  // Path & Milestone Management
+  // --------------------
+  std::vector<geometry_msgs::msg::Pose> generateReferenceHorizon(const geometry_msgs::msg::Pose& lookahead_pose);
 
-  // --- Utility Methods ---
+  // --------------------
+  // Configuration
+  // --------------------
   void getParams();
   void setMotionModel(const std::string & model);
   bool isHolonomic() const;
 
-  // --- Core Members ---
+private:
+  // --------------------
+  // ROS and Configuration
+  // --------------------
   rclcpp_lifecycle::LifecycleNode::WeakPtr parent_;
-  std::shared_ptr<nav2_costmap_2d::Costmap2DROS> costmap_ros_;
-  nav2_costmap_2d::Costmap2D * costmap_{nullptr};
+  rclcpp::Clock::SharedPtr clock_;
+  rclcpp::Logger logger_{rclcpp::get_logger("SORTHAMOptimizer")};
   std::string name_;
   ParametersHandler * parameters_handler_{nullptr};
-  rclcpp::Logger logger_{rclcpp::get_logger("SORTHAMOptimizer")};
 
-  // --- Settings ---
-  models::OptimizerSettings settings_;
-  std::shared_ptr<MotionModel> motion_model_;
-
-  // --- State/Plan Info used by MPC ---
-  MpcCurrentState current_state_;
+  // --------------------
+  // Costmap and Path
+  // --------------------
+  std::shared_ptr<nav2_costmap_2d::Costmap2DROS> costmap_ros_;
+  nav2_costmap_2d::Costmap2D * costmap_{nullptr};
   models::Path path_;
   geometry_msgs::msg::Pose goal_;
 
-  // --- CasADi Members ---
+  // --------------------
+  // Motion Model
+  // --------------------
+  std::shared_ptr<MotionModel> motion_model_;
+  MpcCurrentState current_state_;
+  models::OptimizerSettings settings_;
+
+  // --------------------
+  // CasADi MPC Variables
+  // --------------------
   casadi::Function solver_func_;
-  casadi::MX V_sym_; // Combined state and control vector (decision variables)
-  casadi::MX P_sym_; // Parameter vector
-  int n_states_;
-  int n_controls_;
-  int n_params_;
-  int n_opt_vars_;
-  int n_constraints_;
-  int n_obstacle_params_per_obs_ = 3; // cx, cy, r^2
-  int n_init_state_params_;
-  int n_ref_params_;
-  int n_last_control_params_;
-  int n_obstacle_params_;
-  int n_dyn_lin_params_;
-  int n_obs_lin_params_;
+  casadi::Function dyn_func_;
+
+  casadi::MX V_sym_;
+  casadi::MX P_sym_;
 
   casadi::DM last_optimal_X_flat_;
   casadi::DM last_optimal_U_flat_;
   casadi::DM last_v_{0.0};
   casadi::DM last_w_{0.0};
   casadi::DM last_vy_{0.0};
-  casadi::Function dyn_func_;
-  casadi::Function dyn_jac_x_func_;
-  casadi::Function dyn_jac_u_func_;
 
-  bool mpc_problem_defined_ = false;
-  bool last_solve_successful_ = false;
+  // --------------------
+  // MPC Problem Dimensions
+  // --------------------
+  int n_states_;
+  int n_controls_;
+  int n_params_;
+  int n_opt_vars_;
+  int n_constraints_;
 
-  // --- Precomputed Bounds ---
+  int n_obstacle_params_per_obs_ = 3;
+  int n_init_state_params_;
+  int n_local_target_params_;
+  int n_last_control_params_;
+  int n_obstacle_params_;
+  int obs_constraint_start_idx_;
+
+  // --------------------
+  // Solver Constraints
+  // --------------------
   std::vector<double> x_flat_lower_bounds_;
   std::vector<double> x_flat_upper_bounds_;
   std::vector<double> g_flat_lower_bounds_;
   std::vector<double> g_flat_upper_bounds_;
 
-  // --- Obstacle Avoidance Parameters ---
+  // --------------------
+  // Obstacle Parameters
+  // --------------------
+  std::vector<ClusterInfo> last_processed_obstacles_;
   double robot_radius_{0.25};
-  double lidar_safety_margin_{0.05};
+  double lidar_safety_margin_{0.2};
   double lidar_cluster_tolerance_{0.2};
   int lidar_min_cluster_size_{3};
   int max_obstacles_{10};
-  double effective_radius_padding_sq_{0.0};
+  double max_cluster_radius_{1.0};
+
+  // --------------------
+  // Lookahead and Milestone
+  // --------------------
+  double lookahead_point_dist_{1.0};
+  double min_lookahead_point_dist_{0.3};
+  std::optional<geometry_msgs::msg::Pose> last_local_target_;
+  std::vector<geometry_msgs::msg::Pose> current_milestones_;
+  size_t current_milestone_idx_;
+  double milestone_reached_threshold_;
+  double milestone_min_spacing_;
+  double milestone_max_spacing_;
+  double milestone_curvature_factor_;
+  std::string last_path_metadata_;
+  std::optional<geometry_msgs::msg::Pose> current_milestones_goal_;
+
+  // --------------------
+  // State
+  // --------------------
+  bool mpc_problem_defined_ = false;
+  bool last_solve_successful_ = false;
 };
 
 }  // namespace sortham

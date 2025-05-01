@@ -146,135 +146,198 @@ geometry_msgs::msg::TwistStamped SORTHAMController::computeVelocityCommands(
   return cmd;
 }
 
+void SORTHAMController::addDeleteAllMarkers(
+    visualization_msgs::msg::MarkerArray& markers, int& id_counter) const
+{
+    visualization_msgs::msg::Marker clear_marker;
+    clear_marker.header.stamp = clock_->now();
+    clear_marker.id = id_counter++; // Use a consistent ID? Or unique ok? Let's use unique.
+    clear_marker.action = visualization_msgs::msg::Marker::DELETEALL;
+
+    std::vector<std::pair<std::string, std::string>> namespaces_frames = {
+        {"obstacle_centers", robot_base_frame_},
+        {"obstacle_radii",   robot_base_frame_},
+        {"obstacle_padding", robot_base_frame_},
+        {"milestones", costmap_ros_->getGlobalFrameID()},
+        {"active_target_milestone", costmap_ros_->getGlobalFrameID()}
+    };
+
+    for (const auto& nf_pair : namespaces_frames) {
+        clear_marker.header.frame_id = nf_pair.second;
+        clear_marker.ns = nf_pair.first;
+        markers.markers.push_back(clear_marker);
+        clear_marker.id = 0;
+    }
+    id_counter = 1;
+}
+
+void SORTHAMController::addObstacleMarkers(
+    visualization_msgs::msg::MarkerArray& markers, int& id_counter) const
+{
+    const auto& obstacles_info = optimizer_.getLastProcessedObstacles();
+    if (obstacles_info.empty()) {
+        return;
+    }
+
+    double robot_radius = optimizer_.getRobotRadius();
+    double safety_margin = optimizer_.getLidarSafetyMargin();
+    double avoidance_padding = robot_radius + safety_margin;
+    auto now = clock_->now();
+
+    for (const auto& obs : obstacles_info) {
+        if (obs.num_points == 0 || obs.radius_sq < 0) continue;
+
+        double radius = (obs.radius_sq > 1e-9) ? std::sqrt(obs.radius_sq) : 0.0;
+        double avoidance_radius = radius + avoidance_padding;
+
+        std_msgs::msg::Header obs_header;
+        obs_header.frame_id = robot_base_frame_;
+        obs_header.stamp = now;
+
+        // Center Sphere
+        visualization_msgs::msg::Marker center_marker;
+        center_marker.header = obs_header;
+        center_marker.ns = "obstacle_centers";
+        center_marker.id = id_counter++;
+        center_marker.type = visualization_msgs::msg::Marker::SPHERE;
+        center_marker.action = visualization_msgs::msg::Marker::ADD;
+        center_marker.pose.position.x = obs.cx; center_marker.pose.position.y = obs.cy; center_marker.pose.position.z = 0.1;
+        center_marker.pose.orientation.w = 1.0;
+        center_marker.scale = utils::createScale(0.1, 0.1, 0.1);
+        center_marker.color = utils::createColor(1.0f, 0.0f, 0.0f, 0.8f); // Red
+        center_marker.lifetime = rclcpp::Duration(1, 0);
+        markers.markers.push_back(center_marker);
+
+        // Radius Cylinder
+        visualization_msgs::msg::Marker radius_marker;
+        radius_marker.header = obs_header;
+        radius_marker.ns = "obstacle_radii";
+        radius_marker.id = id_counter++;
+        radius_marker.type = visualization_msgs::msg::Marker::CYLINDER;
+        radius_marker.action = visualization_msgs::msg::Marker::ADD;
+        radius_marker.pose.position.x = obs.cx; radius_marker.pose.position.y = obs.cy; radius_marker.pose.position.z = 0.05;
+        radius_marker.pose.orientation.w = 1.0;
+        radius_marker.scale = utils::createScale(radius * 2.0, radius * 2.0, 0.02);
+        radius_marker.color = utils::createColor(1.0f, 1.0f, 0.0f, 0.5f); // Yellow
+        radius_marker.lifetime = rclcpp::Duration(1, 0);
+        markers.markers.push_back(radius_marker);
+
+        // Padding Cylinder
+        visualization_msgs::msg::Marker padding_marker;
+        padding_marker.header = obs_header;
+        padding_marker.ns = "obstacle_padding";
+        padding_marker.id = id_counter++;
+        padding_marker.type = visualization_msgs::msg::Marker::CYLINDER;
+        padding_marker.action = visualization_msgs::msg::Marker::ADD;
+        padding_marker.pose.position.x = obs.cx; padding_marker.pose.position.y = obs.cy; padding_marker.pose.position.z = 0.02;
+        padding_marker.pose.orientation.w = 1.0;
+        padding_marker.scale = utils::createScale(avoidance_radius * 2.0, avoidance_radius * 2.0, 0.01);
+        padding_marker.color = utils::createColor(1.0f, 0.5f, 0.0f, 0.3f); // Orange
+        padding_marker.lifetime = rclcpp::Duration(1, 0);
+        markers.markers.push_back(padding_marker);
+    }
+}
+
+void SORTHAMController::addMilestoneMarkers(
+    visualization_msgs::msg::MarkerArray& markers, int& id_counter) const
+{
+    const auto& milestones = optimizer_.getCurrentMilestones();
+    if (milestones.empty()) {
+        return;
+    }
+
+    visualization_msgs::msg::Marker milestones_marker;
+    milestones_marker.header.frame_id = costmap_ros_->getGlobalFrameID();
+    milestones_marker.header.stamp = clock_->now();
+    milestones_marker.ns = "milestones";
+    milestones_marker.id = id_counter++;
+    milestones_marker.type = visualization_msgs::msg::Marker::SPHERE_LIST;
+    milestones_marker.action = visualization_msgs::msg::Marker::ADD;
+    milestones_marker.pose.orientation.w = 1.0;
+    milestones_marker.scale = utils::createScale(0.15, 0.15, 0.15);
+    milestones_marker.color = utils::createColor(0.0f, 0.7f, 1.0f, 0.6f); // Light blue
+    milestones_marker.lifetime = rclcpp::Duration(1, 0);
+
+    for (const auto& pose : milestones) {
+        milestones_marker.points.push_back(pose.position);
+    }
+    markers.markers.push_back(milestones_marker);
+}
+
+
+void SORTHAMController::addActiveTargetMarker(
+    visualization_msgs::msg::MarkerArray& markers, int& id_counter) const
+{
+    std::optional<geometry_msgs::msg::Pose> active_target_pose_opt = optimizer_.getLastLocalTarget();
+    if (!active_target_pose_opt.has_value()) {
+        return;
+    }
+
+    std::string global_frame = costmap_ros_->getGlobalFrameID();
+    auto now = clock_->now();
+    geometry_msgs::msg::Pose target_pose = active_target_pose_opt.value();
+    bool is_fallback = optimizer_.getCurrentMilestones().empty();
+
+    // Arrow Marker
+    visualization_msgs::msg::Marker target_arrow_marker;
+    target_arrow_marker.header.frame_id = global_frame;
+    target_arrow_marker.header.stamp = now;
+    target_arrow_marker.ns = "active_target_milestone";
+    target_arrow_marker.id = id_counter++;
+    target_arrow_marker.type = visualization_msgs::msg::Marker::ARROW;
+    target_arrow_marker.action = visualization_msgs::msg::Marker::ADD;
+    target_arrow_marker.pose = target_pose;
+    target_arrow_marker.scale = utils::createScale(0.7, 0.1, 0.1);
+    target_arrow_marker.color = is_fallback ? utils::createColor(1.0f, 0.0f, 0.0f, 0.9f) // Red fallback
+                                        : utils::createColor(0.0f, 1.0f, 0.0f, 0.9f); // Green target
+    target_arrow_marker.lifetime = rclcpp::Duration(1, 0);
+    markers.markers.push_back(target_arrow_marker);
+
+    // Sphere Marker at Target Location
+    visualization_msgs::msg::Marker target_sphere_marker;
+    target_sphere_marker.header.frame_id = global_frame;
+    target_sphere_marker.header.stamp = now;
+    target_sphere_marker.ns = "active_target_milestone";
+    target_sphere_marker.id = id_counter++;
+    target_sphere_marker.type = visualization_msgs::msg::Marker::SPHERE;
+    target_sphere_marker.action = visualization_msgs::msg::Marker::ADD;
+    target_sphere_marker.pose = target_pose; // Position only matters here
+    target_sphere_marker.pose.orientation.w = 1.0; // Ensure valid quat for sphere
+    target_sphere_marker.scale = utils::createScale(0.25, 0.25, 0.25);
+    target_sphere_marker.color = is_fallback ? utils::createColor(1.0f, 0.0f, 0.0f, 0.9f) // Red fallback
+                                         : utils::createColor(0.0f, 1.0f, 0.0f, 0.9f); // Green target
+    target_sphere_marker.lifetime = rclcpp::Duration(1, 0);
+    markers.markers.push_back(target_sphere_marker);
+}
+
+
+// ==========================================================================
+// Main Visualization Function
+// ==========================================================================
+
 void SORTHAMController::visualize(nav_msgs::msg::Path transformed_plan)
 {
-  // --- Visualize Optimal Trajectory using TrajectoryVisualizer (Existing) ---
-  trajectory_visualizer_.add(optimizer_.getOptimizedTrajectory(), "Optimal Trajectory");
-  trajectory_visualizer_.visualize(std::move(transformed_plan)); // Publishes traj + plan
+    if (visualize_) {
+        const nav_msgs::msg::Path& plan_ref = transformed_plan;
+        trajectory_visualizer_.add(optimizer_.getOptimizedTrajectory(), "Optimal Trajectory");
+        trajectory_visualizer_.visualize(plan_ref);
+    }
 
-  // --- Visualize Processed Obstacles Directly (New) ---
-  const auto& obstacles_info = optimizer_.getLastProcessedObstacles();
-  double robot_radius = optimizer_.getRobotRadius();
-  double safety_margin = optimizer_.getLidarSafetyMargin();
+    if (!visualize_ || !obstacle_marker_pub_ || obstacle_marker_pub_->get_subscription_count() == 0) {
+        return;
+    }
 
-  // Only publish if there are subscribers and obstacles
-  if (obstacle_marker_pub_->get_subscription_count() > 0 && !obstacles_info.empty())
-  {
-      visualization_msgs::msg::MarkerArray marker_array_msg;
-      auto now = clock_->now();
-      int marker_id = 0; // Unique IDs within this array for this cycle
-      double avoidance_padding = robot_radius + safety_margin;
+    visualization_msgs::msg::MarkerArray marker_array_msg;
+    int marker_id = 0;
 
-      // --- Marker for Deleting Old Markers (Optional but good practice) ---
-      visualization_msgs::msg::Marker clear_marker;
-      clear_marker.header.frame_id = robot_base_frame_; // Use controller's base frame
-      clear_marker.header.stamp = now;
-      clear_marker.id = marker_id++; // Assign an ID
-      clear_marker.action = visualization_msgs::msg::Marker::DELETEALL;
-      // Add delete markers for all namespaces we are about to publish
-      clear_marker.ns = "obstacle_centers"; marker_array_msg.markers.push_back(clear_marker);
-      clear_marker.ns = "obstacle_radii"; marker_array_msg.markers.push_back(clear_marker);
-      clear_marker.ns = "obstacle_padding"; marker_array_msg.markers.push_back(clear_marker);
-      clear_marker.ns = "raw_lidar_points"; marker_array_msg.markers.push_back(clear_marker); // If visualizing raw points
+    addDeleteAllMarkers(marker_array_msg, marker_id);
+    addObstacleMarkers(marker_array_msg, marker_id);
+    addMilestoneMarkers(marker_array_msg, marker_id);
+    addActiveTargetMarker(marker_array_msg, marker_id);
 
-      // --- Create Markers for Each Obstacle ---
-      for (const auto& obs : obstacles_info)
-      {
-          if (obs.num_points == 0 || obs.radius_sq < 0) continue;
-
-          double radius = (obs.radius_sq > 1e-9) ? std::sqrt(obs.radius_sq) : 0.0;
-          double avoidance_radius = radius + avoidance_padding;
-
-          // 1. Center Sphere
-          visualization_msgs::msg::Marker center_marker;
-          center_marker.header.frame_id = robot_base_frame_;
-          center_marker.header.stamp = now;
-          center_marker.ns = "obstacle_centers";
-          center_marker.id = marker_id++;
-          center_marker.type = visualization_msgs::msg::Marker::SPHERE;
-          center_marker.action = visualization_msgs::msg::Marker::ADD;
-          center_marker.pose.position.x = obs.cx;
-          center_marker.pose.position.y = obs.cy;
-          center_marker.pose.position.z = 0.1;
-          center_marker.pose.orientation.w = 1.0;
-          center_marker.scale = utils::createScale(0.1, 0.1, 0.1);
-          center_marker.color = createColor(1.0f, 0.0f, 0.0f, 0.8f); // Red center
-          center_marker.lifetime = rclcpp::Duration(1, 0);
-          marker_array_msg.markers.push_back(center_marker);
-
-          // 2. Radius Cylinder
-          visualization_msgs::msg::Marker radius_marker;
-          radius_marker.header.frame_id = robot_base_frame_;
-          radius_marker.header.stamp = now;
-          radius_marker.ns = "obstacle_radii";
-          radius_marker.id = marker_id++;
-          radius_marker.type = visualization_msgs::msg::Marker::CYLINDER;
-          radius_marker.action = visualization_msgs::msg::Marker::ADD;
-          radius_marker.pose.position.x = obs.cx;
-          radius_marker.pose.position.y = obs.cy;
-          radius_marker.pose.position.z = 0.05;
-          radius_marker.pose.orientation.w = 1.0;
-          radius_marker.scale = utils::createScale(radius * 2.0, radius * 2.0, 0.02);
-          radius_marker.color = createColor(1.0f, 1.0f, 0.0f, 0.5f); // Yellow radius
-          radius_marker.lifetime = rclcpp::Duration(1, 0);
-          marker_array_msg.markers.push_back(radius_marker);
-
-          // 3. Padding Cylinder
-          visualization_msgs::msg::Marker padding_marker;
-          padding_marker.header.frame_id = robot_base_frame_;
-          padding_marker.header.stamp = now;
-          padding_marker.ns = "obstacle_padding";
-          padding_marker.id = marker_id++;
-          padding_marker.type = visualization_msgs::msg::Marker::CYLINDER;
-          padding_marker.action = visualization_msgs::msg::Marker::ADD;
-          padding_marker.pose.position.x = obs.cx;
-          padding_marker.pose.position.y = obs.cy;
-          padding_marker.pose.position.z = 0.02;
-          padding_marker.pose.orientation.w = 1.0;
-          padding_marker.scale = utils::createScale(avoidance_radius * 2.0, avoidance_radius * 2.0, 0.01);
-          padding_marker.color = createColor(1.0f, 0.5f, 0.0f, 0.3f); // Orange padding
-          padding_marker.lifetime = rclcpp::Duration(1, 0);
-          marker_array_msg.markers.push_back(padding_marker);
-      }
-
-      // --- Visualize Raw Lidar Points (Optional) ---
-      std::vector<geometry_msgs::msg::Point> current_obstacle_points_for_viz;
-      {
-          std::lock_guard<std::mutex> lock(obstacle_points_mutex_);
-          current_obstacle_points_for_viz = obstacle_points_;
-      }
-      if (!current_obstacle_points_for_viz.empty()) {
-          visualization_msgs::msg::Marker points_marker;
-          points_marker.header.frame_id = robot_base_frame_;
-          points_marker.header.stamp = now;
-          points_marker.ns = "raw_lidar_points";
-          points_marker.id = marker_id++;
-          points_marker.type = visualization_msgs::msg::Marker::POINTS;
-          points_marker.action = visualization_msgs::msg::Marker::ADD;
-          points_marker.pose.orientation.w = 1.0;
-          points_marker.scale = utils::createScale(0.02, 0.02, 0.02); // Point size
-          points_marker.color = createColor(1.0f, 0.0f, 1.0f, 1.0f); // Magenta points
-          points_marker.lifetime = rclcpp::Duration(1, 0);
-          points_marker.points = current_obstacle_points_for_viz; // Assign points
-          marker_array_msg.markers.push_back(points_marker);
-      }
-
-      // Publish the marker array for obstacles and points
-      obstacle_marker_pub_->publish(marker_array_msg);
-  }
-  else if (obstacle_marker_pub_->get_subscription_count() > 0) {
-      // Publish a clear marker if there are no obstacles but subscribers exist
-      // to clear previous visualizations
-      visualization_msgs::msg::MarkerArray clear_array;
-      visualization_msgs::msg::Marker clear_marker;
-      clear_marker.header.frame_id = robot_base_frame_;
-      clear_marker.header.stamp = clock_->now();
-      clear_marker.id = 0; // Single ID for deleteall
-      clear_marker.action = visualization_msgs::msg::Marker::DELETEALL;
-      clear_array.markers.push_back(clear_marker);
-      obstacle_marker_pub_->publish(clear_array);
-  }
+    obstacle_marker_pub_->publish(marker_array_msg);
 }
+
 
 void SORTHAMController::setPlan(const nav_msgs::msg::Path & path)
 {

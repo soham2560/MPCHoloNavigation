@@ -117,11 +117,21 @@ protected:
     * @param transformed_plan Transformed input plan
     */
   void visualize(nav_msgs::msg::Path transformed_plan);
-  /**
-    * @brief Callback for the laser scan subscriber
-    * @param msg Received LaserScan message
-    */
-  void laserScanCallback(const sensor_msgs::msg::LaserScan::SharedPtr msg);
+
+  void laserScanCallback(
+    const sensor_msgs::msg::LaserScan::SharedPtr msg);
+
+  void addDeleteAllMarkers(
+    visualization_msgs::msg::MarkerArray& markers, int& id_counter) const;
+
+  void addObstacleMarkers(
+    visualization_msgs::msg::MarkerArray& markers, int& id_counter) const;
+
+  void addMilestoneMarkers(
+    visualization_msgs::msg::MarkerArray& markers, int& id_counter) const;
+
+  void addActiveTargetMarker(
+    visualization_msgs::msg::MarkerArray& markers, int& id_counter) const;
 
   std::string name_;
   rclcpp_lifecycle::LifecycleNode::WeakPtr parent_;
@@ -148,7 +158,6 @@ protected:
   bool visualize_;
 
   double reset_period_;
-  // Last time computeVelocityCommands was called
   rclcpp::Time last_time_called_;
 
   std_msgs::msg::ColorRGBA createColor(float r, float g, float b, float a) {
